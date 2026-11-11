@@ -1,5 +1,5 @@
 --[[
-Cozy Hub v7  |  Delta / Xeno
+Cozy Hub v8  |  Delta / Xeno
 Ключ меняется в переменной KEY.
 Открыть/закрыть меню: RightShift или тап по иконке.
 Двойной тап по иконке: закрепить / открепить.
@@ -37,6 +37,9 @@ hitbox = false, hitboxSize = 4, hitboxTrans = 70, hitboxTeam = true, hitboxHl = 
 bodyHitbox = false, bodySize = 7, bodyTrans = 75, bodyHl = true,
 tgt = false, tgtStyle = "Кольцо", tgtColor = "Тема", tgtSel = "К прицелу", tgtRange = 300, tgtFov = 250,
 tgtTeam = true, tgtHud = true, tgtSize = 100, tgtSpeed = 100,
+stretch = false, stretchVal = 75, stretchPreset = "Своя",
+xh = false, xhStyle = "Крест", xhColor = "Белый", xhSize = 10, xhThick = 2, xhGap = 4, xhAlpha = 100,
+xhSpin = 0, xhOffX = 0, xhOffY = 0, xhOutline = true, xhDot = false, xhDyn = false, xhHit = false,
 theme = "Чёрно-белая", bgAnim = true, esp3d = "Выкл", musicVol = 50,
 }
 local unlocked = false
@@ -2249,6 +2252,177 @@ setHud(false)
 end
 end
 end
+local function stretchStep()
+if not S.stretch then return end
+local k = S.stretchVal / 100
+Camera.CFrame = Camera.CFrame * CFrame.new(0, 0, 0, 1, 0, 0, 0, k, 0, 0, 0, 1)
+end
+local Xhair = { dyn = 0 }
+do
+local C3 = Color3.fromRGB
+local XH_COLORS = {
+["Белый"] = C3(255, 255, 255), ["Красный"] = C3(255, 60, 70), ["Зелёный"] = C3(70, 255, 120),
+["Голубой"] = C3(80, 210, 255), ["Розовый"] = C3(255, 110, 200), ["Жёлтый"] = C3(255, 225, 80),
+}
+Xhair.styles = { "Крест", "Т-образный", "Крест + точка", "Точка", "Круг", "Круг + риски", "Квадрат", "Ромб", "Углы", "Х-крест", "Звезда", "Стрелки", "Треугольник" }
+Xhair.colors = { "Белый", "Тема", "Красный", "Зелёный", "Голубой", "Розовый", "Жёлтый", "Радуга" }
+local layer = new("Frame", { Name = "Xhair", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 0 }, Gui)
+local function build(parent)
+local o = { segs = {} }
+for i = 1, 16 do
+local f = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Visible = false }, parent)
+local st = new("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 1, Enabled = false }, f)
+o.segs[i] = { f = f, st = st }
+end
+o.ring = new("Frame", { AnchorPoint = Vector2.new(.5, .5), BackgroundTransparency = 1, Visible = false }, parent)
+corner(o.ring, 999)
+o.ringStroke = new("UIStroke", { Thickness = 2 }, o.ring)
+o.dot = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Visible = false }, parent)
+corner(o.dot, 999)
+o.dotStroke = new("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 1, Enabled = false }, o.dot)
+return o
+end
+local function draw(o, c, gapExtra, col, rot)
+local L, th = S.xhSize, S.xhThick
+local g = S.xhGap + gapExtra
+local alpha = 1 - S.xhAlpha / 100
+local style = S.xhStyle
+local cosr, sinr = math.cos(rot), math.sin(rot)
+local n = 0
+local function rotp(x, y) return Vector2.new(c.X + x * cosr - y * sinr, c.Y + x * sinr + y * cosr) end
+local function seg(x1, y1, x2, y2)
+n = n + 1
+local sg = o.segs[n]
+if not sg then return end
+local a, b = rotp(x1, y1), rotp(x2, y2)
+local d = b - a
+local f = sg.f
+f.Visible = true
+f.BackgroundColor3 = col
+f.BackgroundTransparency = alpha
+f.Size = UDim2.fromOffset(d.Magnitude + th, th)
+f.Position = UDim2.fromOffset((a.X + b.X) / 2, (a.Y + b.Y) / 2)
+f.Rotation = math.deg(math.atan2(d.Y, d.X))
+sg.st.Enabled = S.xhOutline
+sg.st.Transparency = alpha
+end
+local function cross()
+seg(0, -g, 0, -g - L); seg(0, g, 0, g + L); seg(-g, 0, -g - L, 0); seg(g, 0, g + L, 0)
+end
+local showDot, ringR = S.xhDot, nil
+if style == "Крест" then cross()
+elseif style == "Т-образный" then
+seg(0, g, 0, g + L); seg(-g, 0, -g - L, 0); seg(g, 0, g + L, 0)
+elseif style == "Крест + точка" then cross(); showDot = true
+elseif style == "Точка" then showDot = true
+elseif style == "Круг" then ringR = L
+elseif style == "Круг + риски" then
+ringR = L + g
+local r2, r1 = ringR + L * .6, ringR
+seg(0, -r1, 0, -r2); seg(0, r1, 0, r2); seg(-r1, 0, -r2, 0); seg(r1, 0, r2, 0)
+elseif style == "Квадрат" then
+local h = L
+seg(-h, -h, h, -h); seg(h, -h, h, h); seg(h, h, -h, h); seg(-h, h, -h, -h)
+elseif style == "Ромб" then
+local h = L * 1.25
+seg(0, -h, h, 0); seg(h, 0, 0, h); seg(0, h, -h, 0); seg(-h, 0, 0, -h)
+elseif style == "Углы" then
+local h, a = L, math.max(3, L * .55)
+seg(-h, -h, -h + a, -h); seg(-h, -h, -h, -h + a)
+seg(h, -h, h - a, -h); seg(h, -h, h, -h + a)
+seg(-h, h, -h + a, h); seg(-h, h, -h, h - a)
+seg(h, h, h - a, h); seg(h, h, h, h - a)
+elseif style == "Х-крест" then
+local d1, e = g * .7, (g + L) * .7
+seg(-d1, -d1, -e, -e); seg(d1, -d1, e, -e); seg(-d1, d1, -e, e); seg(d1, d1, e, e)
+elseif style == "Звезда" then
+cross()
+local d1, e = g * .7, (g + L) * .7
+seg(-d1, -d1, -e, -e); seg(d1, -d1, e, -e); seg(-d1, d1, -e, e); seg(d1, d1, e, e)
+elseif style == "Стрелки" then
+local a = L * .6
+seg(0, -g, -a, -g - a); seg(0, -g, a, -g - a)
+seg(0, g, -a, g + a); seg(0, g, a, g + a)
+seg(-g, 0, -g - a, -a); seg(-g, 0, -g - a, a)
+seg(g, 0, g + a, -a); seg(g, 0, g + a, a)
+elseif style == "Треугольник" then
+seg(0, -L, L * .87, L * .5); seg(L * .87, L * .5, -L * .87, L * .5); seg(-L * .87, L * .5, 0, -L)
+end
+for i = n + 1, #o.segs do o.segs[i].f.Visible = false end
+if ringR then
+o.ring.Visible = true
+o.ring.Position = UDim2.fromOffset(c.X, c.Y)
+o.ring.Size = UDim2.fromOffset(ringR * 2, ringR * 2)
+o.ringStroke.Color = col
+o.ringStroke.Thickness = th
+o.ringStroke.Transparency = alpha
+else
+o.ring.Visible = false
+end
+if showDot then
+local ds = math.max(2, th * 1.6)
+o.dot.Visible = true
+o.dot.Position = UDim2.fromOffset(c.X, c.Y)
+o.dot.Size = UDim2.fromOffset(ds, ds)
+o.dot.BackgroundColor3 = col
+o.dot.BackgroundTransparency = alpha
+o.dotStroke.Enabled = S.xhOutline
+o.dotStroke.Transparency = alpha
+else
+o.dot.Visible = false
+end
+end
+local main = build(layer)
+Xhair.preview = nil
+local rp = RaycastParams.new()
+rp.FilterType = Enum.RaycastFilterType.Exclude
+local function overPlayer()
+rp.FilterDescendantsInstances = { LP.Character }
+local vp = Camera.ViewportSize
+local ray = Camera:ViewportPointToRay(vp.X / 2, vp.Y / 2)
+local res = workspace:Raycast(ray.Origin, ray.Direction * 1000, rp)
+if res and res.Instance then
+local m = res.Instance:FindFirstAncestorOfClass("Model")
+if m and m:FindFirstChildOfClass("Humanoid") and Players:GetPlayerFromCharacter(m) then return true end
+end
+return false
+end
+local function pickColor()
+local m = S.xhColor
+if m == "Радуга" then return Color3.fromHSV((os.clock() * .3) % 1, .8, 1) end
+if m == "Тема" then return T.accent end
+return XH_COLORS[m] or XH_COLORS["Белый"]
+end
+function Xhair.makePreview(parent)
+Xhair.preview = build(parent)
+Xhair.previewFrame = parent
+end
+function Xhair.step(dt)
+local on = unlocked and S.xh
+layer.Visible = on and true or false
+local col = pickColor()
+local rot = math.rad((os.clock() * S.xhSpin) % 360)
+if S.xhDyn then
+local char = LP.Character
+local root = char and char:FindFirstChild("HumanoidRootPart")
+local sp = root and root.AssemblyLinearVelocity.Magnitude or 0
+Xhair.dyn = Xhair.dyn + (math.min(sp * .25, 14) - Xhair.dyn) * math.min((dt or .016) * 10, 1)
+else
+Xhair.dyn = 0
+end
+if on then
+local vp = Camera.ViewportSize
+local c = Vector2.new(vp.X / 2 + S.xhOffX, vp.Y / 2 + S.xhOffY)
+local mc = col
+if S.xhHit and overPlayer() then mc = XH_COLORS["Красный"] end
+draw(main, c, Xhair.dyn, mc, rot)
+end
+if Xhair.preview and Xhair.page and Xhair.page.Visible and Main.Visible then
+local sz = Xhair.previewFrame.AbsoluteSize / math.max(MainScale.Scale, .01)
+draw(Xhair.preview, sz / 2, Xhair.dyn, col, rot)
+end
+end
+end
 local function CC(r, g, b) return Color3.fromRGB(r, g, b) end
 local Themes = {
 ["Чёрно-белая"] = { bg = CC(8, 8, 10), side = CC(14, 14, 17), card = CC(22, 22, 26), hover = CC(40, 40, 46), off = CC(58, 58, 66),
@@ -2339,6 +2513,7 @@ pcall(bgStep, dt)
 pcall(fpsCounterStep, dt)
 if not unlocked then return end
 pcall(aimStep)
+pcall(stretchStep)
 pcall(espStep)
 pcall(lightStep)
 pcall(playerStep)
@@ -2347,12 +2522,14 @@ pcall(Shaders.step)
 pcall(hitboxStep)
 pcall(Music.step)
 pcall(Target.step, dt)
+pcall(Xhair.step, dt)
 if S.halo then pcall(Halo.update) end
 if GlowHL then GlowHL.FillColor = Color3.fromHSV((os.clock() * .25) % 1, .7, 1); GlowHL.OutlineColor = GlowHL.FillColor end
 end)
 local AimPage     = Tab("Аим")
 local EspPage     = Tab("ESP")
 local TargetPage  = Tab("Таргет")
+local XhairPage   = Tab("Прицел")
 local VisualsPage = Tab("Визуалы")
 local ShadersPage = Tab("Шейдеры")
 local PlayerPage  = Tab("Игрок")
@@ -2453,6 +2630,31 @@ Section(TargetPage, "Настройка эффекта")
 Slider(TargetPage, "Размер", "tgtSize", 50, 200, 5, "%")
 Slider(TargetPage, "Скорость", "tgtSpeed", 50, 250, 5, "%")
 InfoCard(TargetPage, "Эффект крутится вокруг ближайшей к прицелу цели, а панель показывает её имя, здоровье и расстояние. Цель не прыгает между игроками, пока прежняя остаётся рядом с прицелом.", 76)
+Xhair.page = XhairPage
+Section(XhairPage, "Прицел по центру")
+Toggle(XhairPage, "Включить прицел", "xh", function(v) Notify(v and "Прицел включён" or "Прицел выключен") end)
+Selector(XhairPage, "Вид прицела", "xhStyle", Xhair.styles)
+Selector(XhairPage, "Цвет", "xhColor", Xhair.colors)
+Section(XhairPage, "Предпросмотр")
+do
+local card = Card(XhairPage, 116)
+local pf = new("Frame", { Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 1, -12), BackgroundColor3 = T.bg, ClipsDescendants = true }, card)
+corner(pf, 8)
+Xhair.makePreview(pf)
+end
+Section(XhairPage, "Редактор")
+Slider(XhairPage, "Размер", "xhSize", 2, 40, 1, " px")
+Slider(XhairPage, "Толщина", "xhThick", 1, 8, 1, " px")
+Slider(XhairPage, "Зазор в центре", "xhGap", 0, 30, 1, " px")
+Slider(XhairPage, "Непрозрачность", "xhAlpha", 10, 100, 5, "%")
+Slider(XhairPage, "Вращение", "xhSpin", 0, 360, 10, "°/с")
+Slider(XhairPage, "Смещение по X", "xhOffX", -150, 150, 1, " px")
+Slider(XhairPage, "Смещение по Y", "xhOffY", -150, 150, 1, " px")
+Toggle(XhairPage, "Чёрная обводка", "xhOutline")
+Toggle(XhairPage, "Точка в центре", "xhDot")
+Toggle(XhairPage, "Расширяется при движении", "xhDyn")
+Toggle(XhairPage, "Краснеет на игроке", "xhHit")
+InfoCard(XhairPage, "Любые изменения видны сразу в предпросмотре. Настройки прицела сохраняются в конфигурациях.", 48)
 Section(PlayerPage, "Скорость")
 Toggle(PlayerPage, "Своя скорость", "speed")
 Slider(PlayerPage, "Скорость бега", "speedVal", 16, 250, 1)
