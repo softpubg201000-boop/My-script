@@ -571,6 +571,31 @@ out[#out+1]=e
 if prev and nxt<lim then dict[nxt]=prev..e:sub(1,1) nxt=nxt+1 end
 prev=e
 end
+local function showErr(e)
+warn("CozyHub ERROR: "..e)
+pcall(function() setclipboard(e) end)
+pcall(function()
+local g=Instance.new("ScreenGui")
+g.ResetOnSpawn=false
+g.DisplayOrder=1000000
+g.Parent=(gethui and gethui()) or game:GetService("CoreGui")
+local t=Instance.new("TextBox")
+t.Size=UDim2.new(.8,0,.5,0)
+t.Position=UDim2.new(.1,0,.25,0)
+t.BackgroundColor3=Color3.new(.12,0,0)
+t.TextColor3=Color3.new(1,1,1)
+t.TextWrapped=true
+t.TextSize=16
+t.MultiLine=true
+t.ClearTextOnFocus=false
+t.TextEditable=false
+t.TextXAlignment=Enum.TextXAlignment.Left
+t.TextYAlignment=Enum.TextYAlignment.Top
+t.Text="Cozy Hub: ошибка запуска. Сделай скриншот и отправь Claude:\n\n"..e
+t.Parent=g
+end)
+end
 local f,err=loadstring(table.concat(out))
-if not f then warn("CozyHub: "..tostring(err)) return end
-return f()
+if not f then showErr("SYNTAX: "..tostring(err)) return end
+local ok,e=xpcall(f,function(m) return tostring(m).."\n"..debug.traceback() end)
+if not ok then showErr(e) end
