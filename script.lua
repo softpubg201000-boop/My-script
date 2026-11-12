@@ -1,4 +1,4 @@
--- Cozy Hub (упакован). Просто запусти.
+-- Cozy Hub packed. Just run.
 local A=[==[!#$%&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[^_abcdefghijklmnopqrstuvwxyz{|}~]==]
 local D=[==[
 !P!P#$#$!-!i#9#D#C!C!n#?#,!C#@!^!Q!X!C!C#F%*!j#/#6#>#+!C!R!C!~#/#8#9!-$A#g$A$,$B#X$B#Q!C$A$-$A$%$A$.$B#Y%F$B#L$B#K%J%C$!%C$0%L#J%F%D%X$.%H$A$/$A$*!C!q!k#!!Q%:#k
@@ -591,7 +591,7 @@ t.ClearTextOnFocus=false
 t.TextEditable=false
 t.TextXAlignment=Enum.TextXAlignment.Left
 t.TextYAlignment=Enum.TextYAlignment.Top
-t.Text="Cozy Hub: ошибка запуска. Сделай скриншот и отправь Claude:\n\n"..e
+t.Text="Cozy Hub startup error. Send a screenshot to Claude:\n\n"..e
 t.Parent=g
 end)
 end
