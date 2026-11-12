@@ -1,14 +1,11 @@
 --[[
-Cozy Hub v10.5  |  Delta / Xeno
+Cozy Hub v10.9  |  Delta / Xeno
 Ключ меняется в переменной KEY.
 Открыть/закрыть меню: RightShift или тап по иконке.
 Двойной тап по иконке: закрепить / открепить.
 Флай: колесо мыши (средняя кнопка) или переключатель во вкладке "Игрок".
 ]]
 local KEY = "2222"
-local ADMIN_KEY = "2010"
-local BAN_URL = ""
-local OWNER_NAME = "cxharrisiz146"
 local Players      = game:GetService("Players")
 local RunService   = game:GetService("RunService")
 local UIS          = game:GetService("UserInputService")
@@ -2425,11 +2422,69 @@ if e.stamp ~= stamp or not m.Parent then dropHl(m) end
 end
 end
 end
+local Friends = { tagged = {} }
+do
+local TAG_NAME = "CozyHubMark_7f3kQ"
+local function markOwn(char)
+if not char then return end
+if char:FindFirstChild(TAG_NAME) then return end
+local v = Instance.new("BoolValue")
+v.Name = TAG_NAME
+v.Value = true
+v.Parent = char
+end
+markOwn(LP.Character)
+conn(LP.CharacterAdded, function(char) task.wait(.2); markOwn(char) end)
+local function makeTag(char)
+local head = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+if not head then return end
+local bb = Instance.new("BillboardGui")
+bb.Name = "CozyHubUserTag"
+bb.Adornee = head
+bb.Size = UDim2.fromOffset(120, 26)
+bb.StudsOffset = Vector3.new(0, 2.5, 0)
+bb.AlwaysOnTop = true
+bb.Parent = Gui
+local lbl = Instance.new("TextLabel")
+lbl.Size = UDim2.fromScale(1, 1)
+lbl.BackgroundTransparency = 1
+lbl.Text = "User Cozy"
+lbl.Font = Enum.Font.GothamBold
+lbl.TextSize = 15
+lbl.TextColor3 = WHITE
+lbl.TextStrokeTransparency = .2
+lbl.Parent = bb
+return bb
+end
+function Friends.step()
+for _, plr in ipairs(Players:GetPlayers()) do
+if plr ~= LP then
+local char = plr.Character
+local has = char and char:FindFirstChild(TAG_NAME)
+local t = Friends.tagged[plr]
+if has and char.Parent then
+if not t or not t.Parent or t.Adornee ~= (char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")) then
+if t then pcall(function() t:Destroy() end) end
+Friends.tagged[plr] = makeTag(char)
+end
+elseif t then
+pcall(function() t:Destroy() end)
+Friends.tagged[plr] = nil
+end
+end
+end
+end
+conn(Players.PlayerRemoving, function(plr)
+local t = Friends.tagged[plr]
+if t then pcall(function() t:Destroy() end) Friends.tagged[plr] = nil end
+end)
+end
 conn(RunService.RenderStepped, function(dt)
 Camera = workspace.CurrentCamera
 FabGrad.Rotation = (os.clock() * 90) % 360
 pcall(bgStep, dt)
 pcall(fpsCounterStep, dt)
+pcall(Friends.step)
 if not unlocked then return end
 pcall(aimStep)
 pcall(stretchStep)
@@ -2778,6 +2833,7 @@ for _, c in ipairs(Conns) do pcall(function() c:Disconnect() end) end
 S.fullbright, S.nofog, S.speed, S.jump, S.fly, S.hitbox = false, false, false, false, false, false
 pcall(hitboxRestore)
 pcall(Glow.restoreAll)
+for plr, t in pairs(Friends.tagged) do pcall(function() t:Destroy() end) end
 pcall(playerStep)
 flyStop()
 pcall(Shaders.reset, true)
@@ -2796,202 +2852,6 @@ setMenu(false)
 task.wait(.3)
 Unload()
 end)
-local Admin = { on = false, list = {}, built = false }
-do
-local function httpGet(url)
-local fns = { syn and syn.request, request, http_request, http and http.request }
-for _, f in ipairs(fns) do
-if f then
-local ok, res = pcall(f, { Url = url, Method = "GET" })
-if ok and res and res.Body and (res.StatusCode == nil or res.StatusCode == 200) then return res.Body end
-end
-end
-local ok, body = pcall(function() return game:HttpGet(url) end)
-if ok then return body end
-end
-function Admin.isBanned()
-if BAN_URL == "" then return false end
-local body = httpGet(BAN_URL)
-if not body then return false end
-local id, nm = tostring(LP.UserId), string.lower(LP.Name)
-for line in string.gmatch(body, "[^\r\n]+") do
-local tok = string.match(line, "^%s*([^%s#]+)")
-if tok and (tok == id or string.lower(tok) == nm) then return true end
-end
-return false
-end
-function Admin.revoke()
-if Admin.revoking then return end
-Admin.revoking = true
-if getgenv then getgenv().CozyHubRevoked = true end
-pcall(function()
-local bl = new("Frame", {
-Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1,
-ZIndex = 200, Active = true,
-}, Gui)
-new("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", Modal = true, ZIndex = 200 }, bl)
-tw(bl, .4, { BackgroundTransparency = 0 })
-new("TextLabel", {
-AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), Size = UDim2.new(1, -40, 0, 60),
-BackgroundTransparency = 1, Text = "Доступ к Cozy Hub отозван администратором",
-Font = Enum.Font.GothamBold, TextSize = 24, TextColor3 = WHITE, TextWrapped = true, ZIndex = 201,
-}, bl)
-end)
-task.wait(10)
-Unload()
-end
-local B36 = "0123456789abcdefghijklmnopqrstuvwxyz"
-local function enc(n)
-local t = ""
-repeat
-local r = n % 36
-t = string.sub(B36, r + 1, r + 1) .. t
-n = (n - r) / 36
-until n == 0
-return t
-end
-local function onMsg(name, text)
-if string.lower(name or "") ~= string.lower(OWNER_NAME) or string.lower(LP.Name) == string.lower(OWNER_NAME) or type(text) ~= "string" then return end
-local code = string.match(text, "^cz(%w+)$")
-if code and tonumber(code, 36) == LP.UserId then task.spawn(Admin.revoke) end
-end
-function Admin.listen()
-pcall(function()
-local TCS = game:GetService("TextChatService")
-conn(TCS.MessageReceived, function(m)
-local src = m.TextSource
-if src then onMsg(src.Name, m.Text) end
-end)
-end)
-local function hook(plr) conn(plr.Chatted, function(msg) onMsg(plr.Name, msg) end) end
-for _, plr in ipairs(Players:GetPlayers()) do pcall(hook, plr) end
-conn(Players.PlayerAdded, function(plr) pcall(hook, plr) end)
-end
-function Admin.send(plr)
-local text = "cz" .. enc(plr.UserId)
-local ok = pcall(function()
-local TCS = game:GetService("TextChatService")
-TCS.TextChannels.RBXGeneral:SendAsync(text)
-end)
-if ok then return true end
-return pcall(function()
-game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents.SayMessageRequest:FireServer(text, "All")
-end)
-end
-function Admin.start()
-Admin.listen()
-if getgenv and getgenv().CozyHubRevoked and BAN_URL ~= "" then
-task.spawn(function() task.wait(1); if not Admin.on and Admin.isBanned() then Admin.revoke() end end)
-end
-task.spawn(function()
-task.wait(2)
-while Gui and Gui.Parent do
-if BAN_URL ~= "" and not Admin.on and Admin.isBanned() then Admin.revoke() return end
-task.wait(45)
-end
-end)
-end
-local function listText()
-return table.concat(Admin.list, "\n")
-end
-local function copy(txt)
-if setclipboard then pcall(setclipboard, txt) return true end
-return false
-end
-function Admin.build()
-if Admin.built then return end
-Admin.built = true
-Section(SetPage, "Админ-панель")
-InfoCard(SetPage, "КИК у игрока сразу выгружает у него скрипт: команда уходит через чат этого сервера, и только ник из OWNER_NAME (сейчас: " .. OWNER_NAME .. ") может её отдать. Для отключения везде (даже вне сервера) скопируй список ниже в файл BAN_URL.", 100)
-local card = Card(SetPage, 220)
-local sf = new("ScrollingFrame", {
-Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 1, -12), BackgroundTransparency = 1, BorderSizePixel = 0,
-ScrollBarThickness = 3, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, card)
-new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, sf)
-local function rebuild()
-for _, c in ipairs(sf:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
-for i, plr in ipairs(Players:GetPlayers()) do
-if plr ~= LP then
-local row = new("Frame", { Size = UDim2.new(1, -6, 0, 30), BackgroundColor3 = T.off, LayoutOrder = i }, sf)
-corner(row, 6)
-new("TextLabel", {
-Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -96, 1, 0), BackgroundTransparency = 1,
-Text = plr.Name, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = T.text,
-TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-}, row)
-local b = new("TextButton", {
-AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -4, .5, 0), Size = UDim2.fromOffset(84, 22),
-BackgroundColor3 = Color3.fromRGB(190, 50, 60), Text = "КИК", Font = Enum.Font.GothamBold,
-TextSize = 11, TextColor3 = WHITE,
-}, row)
-corner(b, 6)
-b.MouseButton1Click:Connect(function()
-if string.lower(LP.Name) ~= string.lower(OWNER_NAME) then
-Notify("Кик отдаёт только " .. OWNER_NAME)
-return
-end
-local line = plr.UserId .. " # " .. plr.Name
-local found = false
-for _, l in ipairs(Admin.list) do if l == line then found = true end end
-if not found then table.insert(Admin.list, line); Admin.refreshList() end
-Notify(Admin.send(plr) and ("Кик отправлен: " .. plr.Name) or "Не удалось отправить в чат")
-end)
-end
-end
-end
-Admin.rebuild = rebuild
-rebuild()
-conn(Players.PlayerAdded, function() task.wait(.2); rebuild() end)
-conn(Players.PlayerRemoving, function() task.wait(.2); rebuild() end)
-Button(SetPage, "Обновить игроков", rebuild)
-local lc = Card(SetPage, 110)
-local box = new("TextBox", {
-Position = UDim2.fromOffset(8, 8), Size = UDim2.new(1, -16, 1, -16), BackgroundTransparency = 1, MultiLine = true,
-TextWrapped = true, ClearTextOnFocus = false, TextEditable = false, Text = "Список пуст",
-Font = Enum.Font.Code, TextSize = 12, TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Left,
-TextYAlignment = Enum.TextYAlignment.Top,
-}, lc)
-function Admin.refreshList()
-box.Text = (#Admin.list == 0) and "Список пуст" or listText()
-end
-Button(SetPage, "Скопировать список", function()
-if #Admin.list == 0 then Notify("Список пуст") return end
-Notify(copy(listText()) and "Список скопирован" or "Буфер недоступен, выдели текст вручную")
-end)
-Button(SetPage, "Очистить список", function() Admin.list = {}; Admin.refreshList() end)
-Button(SetPage, "Проверить доступ сейчас", function()
-if BAN_URL == "" then Notify("BAN_URL не задан в начале скрипта") return end
-Notify(Admin.isBanned() and "Ты есть в списке (админу это не мешает)" or "Файл прочитан, тебя в списке нет")
-end)
-Notify(string.lower(LP.Name) == string.lower(OWNER_NAME) and "Админ-панель открыта (кик доступен)" or "Админ-панель открыта (кик доступен только у " .. OWNER_NAME .. ")")
-end
-Section(SetPage, "Админ")
-local kc = Card(SetPage, 44)
-local kb = new("TextBox", {
-Position = UDim2.fromOffset(8, 7), Size = UDim2.new(1, -110, 0, 30), BackgroundColor3 = T.off, Text = "",
-PlaceholderText = "Админ-ключ", PlaceholderColor3 = T.sub, TextColor3 = T.text, Font = Enum.Font.GothamBold,
-TextSize = 13, ClearTextOnFocus = true,
-}, kc)
-corner(kb, 6)
-local kbtn = new("TextButton", {
-AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 7), Size = UDim2.fromOffset(88, 30),
-BackgroundColor3 = T.accent, Text = "Войти", Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = Color3.new(0, 0, 0),
-}, kc)
-corner(kbtn, 6)
-local function tryKey()
-local t = string.gsub(kb.Text or "", "%s+", "")
-if t == ADMIN_KEY then
-Admin.on = true
-kb.Text = ""
-Admin.build()
-else
-Notify("Неверный админ-ключ")
-end
-end
-kbtn.MouseButton1Click:Connect(tryKey)
-kb.FocusLost:Connect(function(enter) if enter then tryKey() end end)
-end
 local function confettiBurst()
 local vp = Camera.ViewportSize
 local cols = {
@@ -3173,28 +3033,48 @@ AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), Size = UD
 BackgroundTransparency = 1, Text = "by Verloren", Font = Enum.Font.GothamBold, TextSize = 14,
 TextColor3 = WHITE, ZIndex = 41,
 }, tag)
+local FEATHER_LEN = { 10, 14, 18, 22, 26, 22, 17 }
+local FEATHER_W = { 3, 3.4, 3.8, 4, 4, 3.4, 2.6 }
+local FEATHER_BASE_ANG = { 6, 16, 27, 39, 52, 66, 80 }
 local function mkPlume(side)
-local holder = new("Frame", {
-AnchorPoint = Vector2.new(side < 0 and 1 or 0, .5), Position = UDim2.new(side < 0 and 0 or 1, side < 0 and -4 or 4, .5, 0),
-Size = UDim2.fromOffset(16, 20), BackgroundTransparency = 1, ZIndex = 41,
+local pivot = new("Frame", {
+AnchorPoint = Vector2.new(side < 0 and 1 or 0, .72), Position = UDim2.new(side < 0 and 0 or 1, side < 0 and -2 or 2, .72, 0),
+Size = UDim2.fromOffset(1, 1), BackgroundTransparency = 1, ZIndex = 40,
 }, tag)
 local feathers = {}
-for i = 1, 3 do
+for i = 1, #FEATHER_LEN do
+local len, w = FEATHER_LEN[i], FEATHER_W[i]
+local holder = new("Frame", {
+AnchorPoint = Vector2.new(side < 0 and 1 or 0, .5), Position = UDim2.fromScale(side < 0 and 1 or 0, .5),
+Size = UDim2.fromOffset(1, 1), BackgroundTransparency = 1, ZIndex = 40 - math.floor((i - 1) / 2),
+}, pivot)
 local f = new("Frame", {
 AnchorPoint = Vector2.new(side < 0 and 1 or 0, .5), Position = UDim2.fromScale(side < 0 and 1 or 0, .5),
-Size = UDim2.fromOffset(6 + i * 3, 2 + i), BackgroundColor3 = WHITE, BackgroundTransparency = .15 + i * .08,
-Rotation = side * (14 + i * 10), ZIndex = 41,
+Size = UDim2.fromOffset(len, w), BackgroundColor3 = WHITE, BorderSizePixel = 0, ZIndex = holder.ZIndex,
 }, holder)
-corner(f, 3)
-feathers[i] = f
+corner(f, w)
+new("UIGradient", {
+Transparency = NumberSequence.new({ NSK(0, .05), NSK(.55, .18), NSK(1, .55) }),
+Rotation = side < 0 and 180 or 0,
+}, f)
+new("UIStroke", { Color = Color3.fromRGB(190, 190, 200), Transparency = .6, Thickness = .6 }, f)
+feathers[i] = { f = f, holder = holder, len = len, ang = FEATHER_BASE_ANG[i], ph = i * .22 }
 end
 return feathers
 end
 local plumeL, plumeR = mkPlume(-1), mkPlume(1)
+local function animate(feathers, side)
+local t = os.clock()
+for i, pf in ipairs(feathers) do
+local flap = math.sin(t * 5.2 - pf.ph) * (5 + i * 1.6)
+pf.holder.Rotation = side * (pf.ang + flap)
+local lift = (math.sin(t * 5.2 - pf.ph) + 1) * .5
+pf.f.Size = UDim2.fromOffset(pf.len * (1 + lift * .08), pf.f.Size.Y.Offset > 0 and pf.f.Size.Y.Offset or 1)
+end
+end
 conn(RunService.RenderStepped, function()
-local flap = math.sin(os.clock() * 5) * 10
-for i, f in ipairs(plumeL) do f.Rotation = -(14 + i * 10) + flap end
-for i, f in ipairs(plumeR) do f.Rotation = (14 + i * 10) - flap end
+animate(plumeL, -1)
+animate(plumeR, 1)
 end)
 local dragging, startPos, startInput
 tag.InputBegan:Connect(function(i)
@@ -3248,7 +3128,6 @@ bl:Destroy()
 done()
 end
 selectTab(1, true)
-Admin.start()
 runKeyScreen(function()
 runWelcome(function()
 unlocked = true
