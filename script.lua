@@ -1,5 +1,5 @@
 --[[
-Cozy Hub v9.6  |  Delta / Xeno
+Cozy Hub v9.8  |  Delta / Xeno
 Ключ меняется в переменной KEY.
 Открыть/закрыть меню: RightShift или тап по иконке.
 Двойной тап по иконке: закрепить / открепить.
@@ -36,6 +36,7 @@ shaderPreset = "Выкл", shaderInt = 100,
 hitbox = false, hitboxSize = 4, hitboxTrans = 70, hitboxTeam = true, hitboxHl = true,
 bodyHitbox = false, bodySize = 7, bodyTrans = 75, bodyHl = true,
 tgt = false, tgtStyle = "Кольцо", tgtColor = "Тема", tgtSel = "К прицелу", tgtRange = 300, tgtFov = 250,
+stretch = false, stretchVal = 75, stretchX = 100, stretchMode = "4:3",
 tgtTeam = true, tgtHud = true, tgtSize = 100, tgtSpeed = 100,
 xh = false, xhStyle = "Крест", xhColor = "Белый", xhSize = 10, xhThick = 2, xhGap = 4, xhAlpha = 100,
 xhSpin = 0, xhOffX = 0, xhOffY = 0, xhOutline = true, xhDot = false, xhDyn = false, xhHit = false,
@@ -2035,6 +2036,22 @@ setHud(false)
 end
 end
 end
+local function stretchStep()
+if not S.stretch then return end
+local kx, ky = 1, 1
+local m = S.stretchMode
+if m == "Своя" then
+kx, ky = S.stretchX / 100, S.stretchVal / 100
+else
+local a, b = m:match("^(%d+):(%d+)$")
+local vp = Camera.ViewportSize
+if a and vp.Y > 0 then
+local r, t = vp.X / vp.Y, tonumber(a) / tonumber(b)
+if t < r then ky = t / r else kx = r / t end
+end
+end
+Camera.CFrame = Camera.CFrame * CFrame.new(0, 0, 0, kx, 0, 0, 0, ky, 0, 0, 0, 1)
+end
 local Xhair = { dyn = 0 }
 do
 local C3 = Color3.fromRGB
@@ -2291,6 +2308,7 @@ pcall(bgStep, dt)
 pcall(fpsCounterStep, dt)
 if not unlocked then return end
 pcall(aimStep)
+pcall(stretchStep)
 pcall(espStep)
 pcall(lightStep)
 pcall(playerStep)
@@ -2304,8 +2322,8 @@ if GlowHL then GlowHL.FillColor = Color3.fromHSV((os.clock() * .25) % 1, .7, 1);
 end)
 local AimPage     = Tab("Аим")
 local EspPage     = Tab("ESP")
-local TargetPage  = Tab("Таргет")
 local XhairPage   = Tab("Прицел")
+local StretchPage = Tab("Растяг")
 local VisualsPage = Tab("Визуалы")
 local ShadersPage = Tab("Шейдеры")
 local PlayerPage  = Tab("Игрок")
@@ -2384,23 +2402,23 @@ if Selectors.shaderPreset then Selectors.shaderPreset("Выкл") end
 Notify("Освещение возвращено")
 end)
 InfoCard(ShadersPage, "Реалистичный: мягкий свет, блум, дымка, глубина резкости.\nКибер-панк: ночь, неон, фиолетовый туман, пульсирующий оттенок.\nЗакат и Холодный — кинематографичные цветокоррекции. Кнопка выше возвращает освещение игры как было.", 88)
-Section(TargetPage, "Таргет-режим")
-Toggle(TargetPage, "Включить таргет", "tgt", function(v) Notify(v and "Таргет включён" or "Таргет выключен") end)
-Selector(TargetPage, "Вид эффекта", "tgtStyle", {
+Section(VisualsPage, "Таргет-режим")
+Toggle(VisualsPage, "Включить таргет", "tgt", function(v) Notify(v and "Таргет включён" or "Таргет выключен") end)
+Selector(VisualsPage, "Вид эффекта", "tgtStyle", {
 "Кольцо", "Двойное кольцо", "Спираль", "Призраки", "Орбиты", "Пульс", "Торнадо",
 "Звёзды", "Нимб", "Квадрат", "Октаэдр", "Клетка", "Сфера", "Прицел",
 })
-Selector(TargetPage, "Цвет эффекта", "tgtColor", { "Тема", "Красный", "Белый", "Голубой", "Розовый", "Зелёный", "Золотой", "Радуга" })
-Toggle(TargetPage, "Панель цели (HP, дистанция)", "tgtHud")
-Section(TargetPage, "Выбор цели")
-Selector(TargetPage, "Кого брать", "tgtSel", { "К прицелу", "По дистанции" })
-Slider(TargetPage, "Дальность", "tgtRange", 50, 1000, 10, " m")
-Slider(TargetPage, "Радиус от прицела", "tgtFov", 50, 600, 10, " px")
-Toggle(TargetPage, "Не выбирать своих", "tgtTeam")
-Section(TargetPage, "Настройка эффекта")
-Slider(TargetPage, "Размер", "tgtSize", 50, 200, 5, "%")
-Slider(TargetPage, "Скорость", "tgtSpeed", 50, 250, 5, "%")
-InfoCard(TargetPage, "Эффект крутится вокруг ближайшей к прицелу цели, а панель показывает её имя, здоровье и расстояние. Цель не прыгает между игроками, пока прежняя остаётся рядом с прицелом.", 76)
+Selector(VisualsPage, "Цвет эффекта", "tgtColor", { "Тема", "Красный", "Белый", "Голубой", "Розовый", "Зелёный", "Золотой", "Радуга" })
+Toggle(VisualsPage, "Панель цели (HP, дистанция)", "tgtHud")
+Section(VisualsPage, "Выбор цели")
+Selector(VisualsPage, "Кого брать", "tgtSel", { "К прицелу", "По дистанции" })
+Slider(VisualsPage, "Дальность", "tgtRange", 50, 1000, 10, " m")
+Slider(VisualsPage, "Радиус от прицела", "tgtFov", 50, 600, 10, " px")
+Toggle(VisualsPage, "Не выбирать своих", "tgtTeam")
+Section(VisualsPage, "Настройка эффекта")
+Slider(VisualsPage, "Размер", "tgtSize", 50, 200, 5, "%")
+Slider(VisualsPage, "Скорость", "tgtSpeed", 50, 250, 5, "%")
+InfoCard(VisualsPage, "Эффект крутится вокруг ближайшей к прицелу цели, а панель показывает её имя, здоровье и расстояние. Цель не прыгает между игроками, пока прежняя остаётся рядом с прицелом.", 76)
 Xhair.page = XhairPage
 Section(XhairPage, "Прицел по центру")
 Toggle(XhairPage, "Включить прицел", "xh", function(v) Notify(v and "Прицел включён" or "Прицел выключен") end)
@@ -2426,6 +2444,13 @@ Toggle(XhairPage, "Точка в центре", "xhDot")
 Toggle(XhairPage, "Расширяется при движении", "xhDyn")
 Toggle(XhairPage, "Краснеет на игроке", "xhHit")
 InfoCard(XhairPage, "Любые изменения видны сразу в предпросмотре. Настройки прицела сохраняются в конфигурациях.", 48)
+Section(StretchPage, "Растяжка экрана")
+Toggle(StretchPage, "Включить растяг", "stretch", function(v) Notify(v and "Растяг включён" or "Растяг выключен") end)
+Selector(StretchPage, "Формат", "stretchMode", { "4:3", "5:4", "3:2", "16:10", "Своя" })
+Section(StretchPage, "Свой растяг (формат «Своя»)")
+Slider(StretchPage, "Сжатие по вертикали", "stretchVal", 30, 100, 1, "%")
+Slider(StretchPage, "Сжатие по горизонтали", "stretchX", 30, 100, 1, "%")
+InfoCard(StretchPage, "4:3 и 5:4 считаются автоматически под твой экран. Для своего растяга выбери формат «Своя» и двигай ползунки: чем меньше значение, тем шире выглядят игроки. Привычно 65–80% по вертикали.", 78)
 Section(PlayerPage, "Скорость")
 Toggle(PlayerPage, "Своя скорость", "speed")
 Slider(PlayerPage, "Скорость бега", "speedVal", 16, 250, 1)
