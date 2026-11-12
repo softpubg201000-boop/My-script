@@ -1,5 +1,5 @@
 --[[
-Cozy Hub v8  |  Delta / Xeno
+Cozy Hub v9.4  |  Delta / Xeno
 Ключ меняется в переменной KEY.
 Открыть/закрыть меню: RightShift или тап по иконке.
 Двойной тап по иконке: закрепить / открепить.
@@ -37,7 +37,7 @@ hitbox = false, hitboxSize = 4, hitboxTrans = 70, hitboxTeam = true, hitboxHl = 
 bodyHitbox = false, bodySize = 7, bodyTrans = 75, bodyHl = true,
 tgt = false, tgtStyle = "Кольцо", tgtColor = "Тема", tgtSel = "К прицелу", tgtRange = 300, tgtFov = 250,
 tgtTeam = true, tgtHud = true, tgtSize = 100, tgtSpeed = 100,
-stretch = false, stretchVal = 75, stretchPreset = "Своя",
+stretch = false, stretchVal = 75, stretchX = 100, stretchMode = "4:3",
 xh = false, xhStyle = "Крест", xhColor = "Белый", xhSize = 10, xhThick = 2, xhGap = 4, xhAlpha = 100,
 xhSpin = 0, xhOffX = 0, xhOffY = 0, xhOutline = true, xhDot = false, xhDyn = false, xhHit = false,
 theme = "Чёрно-белая", bgAnim = true, esp3d = "Выкл", musicVol = 50,
@@ -666,7 +666,7 @@ o.arrowTxt.TextColor3 = col
 o.arrowTxt.Text = string.format("%dm", dist)
 end
 local function ghostUpdate(o, root, col, dist)
-if not S.espGhost or dist > math.min(S.espDist, 350) then
+if true or dist > math.min(S.espDist, 350) then
 if o.dots then for _, d in ipairs(o.dots) do d.Visible = false end end
 return
 end
@@ -2254,8 +2254,19 @@ end
 end
 local function stretchStep()
 if not S.stretch then return end
-local k = S.stretchVal / 100
-Camera.CFrame = Camera.CFrame * CFrame.new(0, 0, 0, 1, 0, 0, 0, k, 0, 0, 0, 1)
+local kx, ky = 1, 1
+local m = S.stretchMode
+if m == "Своя" then
+kx, ky = S.stretchX / 100, S.stretchVal / 100
+else
+local a, b = m:match("^(%d+):(%d+)$")
+local vp = Camera.ViewportSize
+if a and vp.Y > 0 then
+local r, t = vp.X / vp.Y, tonumber(a) / tonumber(b)
+if t < r then ky = t / r else kx = r / t end
+end
+end
+Camera.CFrame = Camera.CFrame * CFrame.new(0, 0, 0, kx, 0, 0, 0, ky, 0, 0, 0, 1)
 end
 local Xhair = { dyn = 0 }
 do
@@ -2530,6 +2541,7 @@ local AimPage     = Tab("Аим")
 local EspPage     = Tab("ESP")
 local TargetPage  = Tab("Таргет")
 local XhairPage   = Tab("Прицел")
+local StretchPage = Tab("Растяг")
 local VisualsPage = Tab("Визуалы")
 local ShadersPage = Tab("Шейдеры")
 local PlayerPage  = Tab("Игрок")
@@ -2582,9 +2594,6 @@ Section(EspPage, "Стрелки у центра экрана")
 Toggle(EspPage, "Стрелки + расстояние", "espArrows")
 Toggle(EspPage, "Показывать всегда", "espArrowAlways")
 Slider(EspPage, "Радиус стрелок", "arrowRadius", 10, 45, 1, "%")
-Section(EspPage, "Эффекты вокруг игрока")
-Toggle(EspPage, "Призраки / таргет", "espGhost")
-Selector(EspPage, "Вид эффекта", "espGhostStyle", { "Призраки", "Таргет-кольцо", "Спираль" })
 Section(EspPage, "Внешний вид")
 Selector(EspPage, "Цвет", "espColor", ESPColorNames)
 Toggle(EspPage, "Цвет по команде", "espTeamCol")
@@ -2655,6 +2664,13 @@ Toggle(XhairPage, "Точка в центре", "xhDot")
 Toggle(XhairPage, "Расширяется при движении", "xhDyn")
 Toggle(XhairPage, "Краснеет на игроке", "xhHit")
 InfoCard(XhairPage, "Любые изменения видны сразу в предпросмотре. Настройки прицела сохраняются в конфигурациях.", 48)
+Section(StretchPage, "Растяжка экрана")
+Toggle(StretchPage, "Включить растяг", "stretch", function(v) Notify(v and "Растяг включён" or "Растяг выключен") end)
+Selector(StretchPage, "Формат", "stretchMode", { "4:3", "5:4", "3:2", "16:10", "Своя" })
+Section(StretchPage, "Свой растяг (формат «Своя»)")
+Slider(StretchPage, "Сжатие по вертикали", "stretchVal", 30, 100, 1, "%")
+Slider(StretchPage, "Сжатие по горизонтали", "stretchX", 30, 100, 1, "%")
+InfoCard(StretchPage, "4:3 и 5:4 считаются автоматически под твой экран. Для своего растяга выбери формат «Своя» и двигай ползунки: чем меньше значение, тем шире выглядят игроки. Привычно 65–80% по вертикали.", 78)
 Section(PlayerPage, "Скорость")
 Toggle(PlayerPage, "Своя скорость", "speed")
 Slider(PlayerPage, "Скорость бега", "speedVal", 16, 250, 1)
@@ -3073,6 +3089,51 @@ setMenu(false)
 task.wait(.3)
 Unload()
 end)
+local function confettiBurst()
+local vp = Camera.ViewportSize
+local cols = {
+Color3.fromRGB(255, 80, 100), Color3.fromRGB(255, 200, 60), Color3.fromRGB(90, 220, 140),
+Color3.fromRGB(90, 170, 255), Color3.fromRGB(200, 120, 255), Color3.fromRGB(255, 255, 255),
+}
+local layer = new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 60, Active = false }, Gui)
+local ps = {}
+for side = 0, 1 do
+local ox = side == 0 and 0 or vp.X
+for _ = 1, 45 do
+local ang = math.rad(side == 0 and math.random(-80, -35) or math.random(-145, -100))
+local sp = math.random(500, 1100)
+local w, h = math.random(6, 11), math.random(4, 8)
+local f = new("Frame", {
+AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(w, h), BorderSizePixel = 0,
+BackgroundColor3 = cols[math.random(#cols)], Rotation = math.random(0, 360), ZIndex = 61,
+}, layer)
+ps[#ps + 1] = {
+f = f, x = ox, y = vp.Y + 10, vx = math.cos(ang) * sp, vy = math.sin(ang) * sp,
+vr = math.random(-500, 500), sway = math.random() * 6, life = 2.6 + math.random() * 1.2,
+}
+end
+end
+local t0 = os.clock()
+local conn
+conn = RunService.RenderStepped:Connect(function(dt)
+local el = os.clock() - t0
+for _, p in ipairs(ps) do
+p.vy = p.vy + 900 * dt
+p.vx = p.vx * (1 - math.min(dt * 1.2, 1))
+p.vy = p.vy * (1 - math.min(dt * .6, 1))
+p.x = p.x + (p.vx + math.sin(el * 4 + p.sway) * 40) * dt
+p.y = p.y + p.vy * dt
+p.f.Position = UDim2.fromOffset(p.x, p.y)
+p.f.Rotation = p.f.Rotation + p.vr * dt
+p.f.BackgroundTransparency = math.clamp((el - (p.life - .8)) / .8, 0, 1)
+end
+if el > 4 then
+conn:Disconnect()
+layer:Destroy()
+end
+end)
+table.insert(Conns, conn)
+end
 local function runKeyScreen(onSuccess)
 local blocker = new("Frame", {
 Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1,
@@ -3080,6 +3141,44 @@ Active = true, ZIndex = 50,
 }, Gui)
 new("TextButton", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 0), Text = "", Modal = true }, blocker)
 tw(blocker, .5, { BackgroundTransparency = .12 })
+local bgFlakes, bgOrbs = {}, {}
+local vp0 = Camera.ViewportSize
+for i = 1, 3 do
+local sz = math.random(260, 420)
+local o = new("Frame", {
+AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(sz, sz), BackgroundColor3 = Color3.new(1, 1, 1),
+BackgroundTransparency = .94, BorderSizePixel = 0, ZIndex = 50,
+}, blocker)
+corner(o, 999)
+bgOrbs[i] = { f = o, ph = math.random() * 6, sx = .15 + i * .3, sy = .3 + (i % 2) * .4 }
+end
+for i = 1, 70 do
+local sz = math.random(2, 7)
+local f = new("Frame", {
+Size = UDim2.fromOffset(sz, sz), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+BackgroundTransparency = .1 + (7 - sz) * .08, ZIndex = 50,
+}, blocker)
+corner(f, 999)
+bgFlakes[i] = {
+f = f, x = math.random() * vp0.X, y = math.random() * vp0.Y, sp = 25 + sz * 9 + math.random() * 20,
+sw = math.random() * 6, amp = 12 + math.random() * 22,
+}
+end
+local snowConn = RunService.RenderStepped:Connect(function(dt)
+local vp = Camera.ViewportSize
+local t = os.clock()
+for _, p in ipairs(bgFlakes) do
+p.y = p.y + p.sp * dt
+if p.y > vp.Y + 10 then p.y = -10; p.x = math.random() * vp.X end
+p.f.Position = UDim2.fromOffset(p.x + math.sin(t * .9 + p.sw) * p.amp, p.y)
+end
+for _, o in ipairs(bgOrbs) do
+o.f.Position = UDim2.fromOffset(
+vp.X * o.sx + math.sin(t * .25 + o.ph) * 80, vp.Y * o.sy + math.cos(t * .2 + o.ph) * 60)
+o.f.BackgroundTransparency = .93 + math.sin(t * .6 + o.ph) * .03
+end
+end)
+table.insert(Conns, snowConn)
 local card = new("CanvasGroup", {
 AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(340, 216),
 BackgroundColor3 = Color3.fromRGB(8, 8, 10), GroupTransparency = 1, ZIndex = 51,
@@ -3100,7 +3199,7 @@ Text = "Cozy Hub", Font = Enum.Font.GothamBlack, TextSize = 24, TextColor3 = WHI
 }, card)
 new("TextLabel", {
 BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 46), Size = UDim2.new(1, 0, 0, 18),
-Text = "Введите ключ для доступа", Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = T.sub,
+Text = "Введи ключ, чтобы войти", Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = T.sub,
 }, card)
 local box = new("TextBox", {
 Position = UDim2.fromOffset(24, 78), Size = UDim2.new(1, -48, 0, 40), BackgroundColor3 = Color3.fromRGB(22, 22, 26),
@@ -3129,12 +3228,14 @@ busy = true
 local txt = (box.Text or ""):gsub("%s+", "")
 if txt == KEY then
 status.Text = "Доступ разрешён"
+pcall(confettiBurst)
 task.wait(.4)
 tw(cscale, .3, { Scale = 1.1 }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 tw(card, .3, { GroupTransparency = 1 })
 tw(blocker, .4, { BackgroundTransparency = 1 })
 task.wait(.45)
 spin:Disconnect()
+snowConn:Disconnect()
 blocker:Destroy()
 onSuccess()
 else
@@ -3153,13 +3254,49 @@ end
 btn.MouseButton1Click:Connect(submit)
 box.FocusLost:Connect(function(enter) if enter then submit() end end)
 end
+local function runWelcome(done)
+local bl = new("Frame", {
+Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = .12,
+Active = true, ZIndex = 50,
+}, Gui)
+local sc = new("UIScale", { Scale = .85 }, bl)
+local top = new("TextLabel", {
+AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .45), Size = UDim2.fromOffset(400, 28),
+BackgroundTransparency = 1, Text = "Добро пожаловать в", Font = Enum.Font.GothamMedium, TextSize = 20,
+TextColor3 = WHITE, TextTransparency = 1, ZIndex = 51,
+}, bl)
+local big = new("TextLabel", {
+AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .53), Size = UDim2.fromOffset(400, 60),
+BackgroundTransparency = 1, Text = "Cozy Hub", Font = Enum.Font.GothamBlack, TextSize = 46,
+TextColor3 = WHITE, TextTransparency = 1, ZIndex = 51,
+}, bl)
+local line = new("Frame", {
+AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .6), Size = UDim2.fromOffset(0, 2),
+BackgroundColor3 = WHITE, BorderSizePixel = 0, ZIndex = 51,
+}, bl)
+corner(line, 2)
+tw(sc, .7, { Scale = 1 }, Enum.EasingStyle.Back)
+tw(top, .5, { TextTransparency = 0 })
+task.wait(.25)
+tw(big, .6, { TextTransparency = 0 })
+tw(line, .8, { Size = UDim2.fromOffset(220, 2) })
+task.wait(1.7)
+tw(top, .4, { TextTransparency = 1 })
+tw(big, .4, { TextTransparency = 1 })
+tw(line, .4, { Size = UDim2.fromOffset(0, 2) })
+tw(bl, .5, { BackgroundTransparency = 1 })
+task.wait(.55)
+bl:Destroy()
+done()
+end
 selectTab(1, true)
 runKeyScreen(function()
+runWelcome(function()
 unlocked = true
 Fab.Visible = true
 Fab.Size = UDim2.fromOffset(0, 0)
 tw(Fab, .5, { Size = UDim2.fromOffset(FAB, FAB) }, Enum.EasingStyle.Back)
 setMenu(true)
-Notify("Доступ разрешён")
 task.delay(.9, function() pcall(Config.autoload) end)
+end)
 end)
