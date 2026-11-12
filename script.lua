@@ -1,5 +1,5 @@
 --[[
-Cozy Hub v9.8  |  Delta / Xeno
+Cozy Hub v9.9  |  Delta / Xeno
 Ключ меняется в переменной KEY.
 Открыть/закрыть меню: RightShift или тап по иконке.
 Двойной тап по иконке: закрепить / открепить.
@@ -37,6 +37,7 @@ hitbox = false, hitboxSize = 4, hitboxTrans = 70, hitboxTeam = true, hitboxHl = 
 bodyHitbox = false, bodySize = 7, bodyTrans = 75, bodyHl = true,
 tgt = false, tgtStyle = "Кольцо", tgtColor = "Тема", tgtSel = "К прицелу", tgtRange = 300, tgtFov = 250,
 stretch = false, stretchVal = 75, stretchX = 100, stretchMode = "4:3",
+bodyGlow = false, glowSelf = false, glowColor = "Как есть", npcGlow = false, glowNpcColor = "Как есть", glowRange = 500,
 tgtTeam = true, tgtHud = true, tgtSize = 100, tgtSpeed = 100,
 xh = false, xhStyle = "Крест", xhColor = "Белый", xhSize = 10, xhThick = 2, xhGap = 4, xhAlpha = 100,
 xhSpin = 0, xhOffX = 0, xhOffY = 0, xhOutline = true, xhDot = false, xhDyn = false, xhHit = false,
@@ -2301,6 +2302,89 @@ Theme.dir, Theme.tw = th.dir or -1, th.tw or 1
 FabGrad.Color = ColorSequence.new({ CSK(0, th.accent), CSK(.5, th.off), CSK(1, th.accent) })
 for nm, lbl in pairs(Theme.cards) do lbl.Text = (nm == name and "• " or "") .. nm end
 end
+local Glow = { orig = setmetatable({}, { __mode = "k" }), npcs = {}, t = 0, stamp = 0, npcConn = nil, scanning = false }
+do
+local NEON = Enum.Material.Neon
+local function colorFor(name)
+if name == "Радуга" then return Color3.fromHSV((os.clock() * .3) % 1, .85, 1) end
+return ESPColors[name]
+end
+local function paint(model, cat, col, stamp)
+for _, d in ipairs(model:GetDescendants()) do
+if d:IsA("BasePart") and d.Name ~= "HumanoidRootPart" then
+local o = Glow.orig[d]
+if not o then o = { d.Material, d.Color, cat, 0 }; Glow.orig[d] = o end
+o[4] = stamp
+if d.Material ~= NEON then d.Material = NEON end
+local want = col or o[2]
+if d.Color ~= want then d.Color = want end
+end
+end
+end
+local function release(cat, stamp)
+for part, o in pairs(Glow.orig) do
+if o[3] == cat and (stamp == nil or o[4] ~= stamp) then
+if part.Parent then pcall(function() part.Material = o[1]; part.Color = o[2] end) end
+Glow.orig[part] = nil
+end
+end
+end
+function Glow.restoreAll() release("p"); release("n") end
+local function rootOf(m) return m:FindFirstChild("HumanoidRootPart") or m.PrimaryPart end
+local function addNpc(h)
+local m = h.Parent
+if m and m:IsA("Model") and not Players:GetPlayerFromCharacter(m) then Glow.npcs[m] = true end
+end
+function Glow.npcOn(v)
+if Glow.npcConn then Glow.npcConn:Disconnect(); Glow.npcConn = nil end
+if not v then Glow.npcs = {}; return end
+Glow.npcConn = workspace.DescendantAdded:Connect(function(d) if d:IsA("Humanoid") then task.defer(addNpc, d) end end)
+table.insert(Conns, Glow.npcConn)
+if Glow.scanning then return end
+Glow.scanning = true
+task.spawn(function()
+local n = 0
+for _, d in ipairs(workspace:GetDescendants()) do
+if d:IsA("Humanoid") then addNpc(d) end
+n = n + 1
+if n % 1500 == 0 then task.wait() end
+end
+Glow.scanning = false
+end)
+end
+function Glow.step(dt)
+Glow.t = Glow.t + dt
+local rainbow = S.glowColor == "Радуга" or S.glowNpcColor == "Радуга"
+if Glow.t < (rainbow and .12 or .5) then return end
+Glow.t = 0
+Glow.stamp = Glow.stamp + 1
+local stamp = Glow.stamp
+local myChar = LP.Character
+local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+local range = S.glowRange
+local function near(m)
+if not myRoot then return true end
+local r = rootOf(m)
+return r and (r.Position - myRoot.Position).Magnitude <= range
+end
+if S.bodyGlow then
+local col = colorFor(S.glowColor)
+for _, plr in ipairs(Players:GetPlayers()) do
+local ch = plr.Character
+if ch and (plr ~= LP or S.glowSelf) and near(ch) then paint(ch, "p", col, stamp) end
+end
+end
+release("p", stamp)
+if S.npcGlow then
+local col = colorFor(S.glowNpcColor)
+for m in pairs(Glow.npcs) do
+if not m.Parent then Glow.npcs[m] = nil
+elseif m ~= myChar and near(m) then paint(m, "n", col, stamp) end
+end
+end
+release("n", stamp)
+end
+end
 conn(RunService.RenderStepped, function(dt)
 Camera = workspace.CurrentCamera
 FabGrad.Rotation = (os.clock() * 90) % 360
@@ -2317,6 +2401,7 @@ pcall(Shaders.step)
 pcall(hitboxStep)
 pcall(Target.step, dt)
 pcall(Xhair.step, dt)
+pcall(Glow.step, dt)
 if S.halo then pcall(Halo.update) end
 if GlowHL then GlowHL.FillColor = Color3.fromHSV((os.clock() * .25) % 1, .7, 1); GlowHL.OutlineColor = GlowHL.FillColor end
 end)
@@ -2382,6 +2467,14 @@ Slider(EspPage, "Макс. дистанция", "espDist", 100, 3000, 50, " m")
 Section(VisualsPage, "Персонаж")
 Toggle(VisualsPage, "Нимб", "halo", function(v) if v then pcall(Halo.build) else Halo.clear() end end)
 Toggle(VisualsPage, "Шлейф", "trail", setTrail)
+Section(VisualsPage, "Свечение тел")
+Toggle(VisualsPage, "Свечение всех игроков", "bodyGlow", function(v) Notify(v and "Свечение игроков включено" or "Свечение игроков выключено") end)
+Selector(VisualsPage, "Цвет игроков", "glowColor", { "Как есть", "Радуга", "Красный", "Зелёный", "Синий", "Фиолетовый", "Белый", "Жёлтый" })
+Toggle(VisualsPage, "Светиться и мне", "glowSelf")
+Toggle(VisualsPage, "Свечение NPC", "npcGlow", function(v) Glow.npcOn(v) end)
+Selector(VisualsPage, "Цвет NPC", "glowNpcColor", { "Как есть", "Радуга", "Красный", "Зелёный", "Синий", "Фиолетовый", "Белый", "Жёлтый" })
+Slider(VisualsPage, "Дальность свечения", "glowRange", 100, 1500, 50, " m")
+InfoCard(VisualsPage, "Тела превращаются в неон. Свечение считается раз в полсекунды и только в пределах дальности, поэтому без лагов. «Как есть» оставляет родной цвет.", 62)
 Section(VisualsPage, "Мир и камера")
 Toggle(VisualsPage, "Фулбрайт", "fullbright", function() restoreLight() end)
 Toggle(VisualsPage, "Без тумана", "nofog", function() restoreLight() end)
@@ -2643,6 +2736,7 @@ local function Unload()
 for _, c in ipairs(Conns) do pcall(function() c:Disconnect() end) end
 S.fullbright, S.nofog, S.speed, S.jump, S.fly, S.hitbox = false, false, false, false, false, false
 pcall(hitboxRestore)
+pcall(Glow.restoreAll)
 pcall(playerStep)
 flyStop()
 pcall(Shaders.reset, true)
