@@ -1,3302 +1,576 @@
---[[
-Cozy Hub v9.4  |  Delta / Xeno
-Ключ меняется в переменной KEY.
-Открыть/закрыть меню: RightShift или тап по иконке.
-Двойной тап по иконке: закрепить / открепить.
-Флай: колесо мыши (средняя кнопка) или переключатель во вкладке "Игрок".
-]]
-local KEY = "2222"
-local Players      = game:GetService("Players")
-local RunService   = game:GetService("RunService")
-local UIS          = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local Lighting     = game:GetService("Lighting")
-local CoreGui      = game:GetService("CoreGui")
-local HttpService  = game:GetService("HttpService")
-local SoundService = game:GetService("SoundService")
-local LP     = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-pcall(function()
-if getgenv and getgenv().CozyHubUnload then getgenv().CozyHubUnload() end
-end)
-local S = {
-aim = false, aimHold = true, aimTeam = true, aimWall = true, aimShowFov = true,
-aimPartSel = "Голова", aimFov = 120, aimSmooth = 35, aimPred = 0,
-esp = false, espBox = true, espName = true, espHealth = true, espTracer = false,
-espChams = true, espTeamCol = false, espColor = "Красный", espDist = 1000,
-halo = false, trail = false, selfGlow = false,
-fullbright = false, nofog = false, fov = false, fovVal = 90,
-speed = false, speedVal = 50, jump = false, jumpVal = 100, infJump = false,
-fly = false, flySpeed = 60,
-fpsMode = "Выкл", showFps = false,
-espStyle = "Бокс", espHpStyle = "Полоска", espTracerPos = "Снизу", espTracerStyle = "Линия",
-espArrows = false, espArrowAlways = false, arrowRadius = 28,
-espGhost = false, espGhostStyle = "Призраки",
-shaderPreset = "Выкл", shaderInt = 100,
-hitbox = false, hitboxSize = 4, hitboxTrans = 70, hitboxTeam = true, hitboxHl = true,
-bodyHitbox = false, bodySize = 7, bodyTrans = 75, bodyHl = true,
-tgt = false, tgtStyle = "Кольцо", tgtColor = "Тема", tgtSel = "К прицелу", tgtRange = 300, tgtFov = 250,
-tgtTeam = true, tgtHud = true, tgtSize = 100, tgtSpeed = 100,
-stretch = false, stretchVal = 75, stretchX = 100, stretchMode = "4:3",
-xh = false, xhStyle = "Крест", xhColor = "Белый", xhSize = 10, xhThick = 2, xhGap = 4, xhAlpha = 100,
-xhSpin = 0, xhOffX = 0, xhOffY = 0, xhOutline = true, xhDot = false, xhDyn = false, xhHit = false,
-theme = "Чёрно-белая", bgAnim = true, esp3d = "Выкл", musicVol = 50,
-}
-local unlocked = false
-local fpsLevel = 0
-local Shaders = { active = nil, fx = {}, saved = nil, t0 = 0 }
-local Theme = { dir = -1, tw = 1, cards = {} }
-local Toggles, Sliders, Selectors = {}, {}, {}
-local Conns = {}
-local function conn(sig, fn)
-local c = sig:Connect(fn)
-table.insert(Conns, c)
-return c
-end
-local WHITE = Color3.fromRGB(245, 245, 245)
-local T = {
-bg     = Color3.fromRGB(8, 8, 10),
-side   = Color3.fromRGB(14, 14, 17),
-card   = Color3.fromRGB(22, 22, 26),
-hover  = Color3.fromRGB(40, 40, 46),
-text   = WHITE,
-accent = WHITE,
-sub    = Color3.fromRGB(150, 150, 158),
-off    = Color3.fromRGB(58, 58, 66),
-}
-local CSK, NSK = ColorSequenceKeypoint.new, NumberSequenceKeypoint.new
-local function new(class, props, parent)
-local o = Instance.new(class)
-if o:IsA("GuiObject") then o.BorderSizePixel = 0 end
-if o:IsA("TextButton") then o.AutoButtonColor = false end
-for k, v in pairs(props or {}) do o[k] = v end
-if parent then o.Parent = parent end
-return o
-end
-local function corner(o, r) return new("UICorner", { CornerRadius = UDim.new(0, r) }, o) end
-local function tw(o, t, props, style, dir)
-local tr = TweenService:Create(o, TweenInfo.new(t, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out), props)
-tr:Play()
-return tr
-end
-local Gui = new("ScreenGui", {
-Name = "CozyHub", ResetOnSpawn = false, IgnoreGuiInset = true,
-ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 999,
-})
-do
-pcall(function() if syn and syn.protect_gui then syn.protect_gui(Gui) end end)
-local ok = pcall(function() Gui.Parent = (gethui and gethui()) or CoreGui end)
-if not ok or not Gui.Parent then Gui.Parent = LP:WaitForChild("PlayerGui") end
-end
-local ESPLayer = new("Frame", { Name = "ESP", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, Gui)
-local VigLayer = new("Frame", { Name = "Vig", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false }, Gui)
-local VigFrames, VigGrads = {}, {}
-do
-local function vf(pos, size, anchor, rot)
-local f = new("Frame", { AnchorPoint = anchor, Position = pos, Size = size, BackgroundColor3 = Color3.new(0, 0, 0) }, VigLayer)
-local g = new("UIGradient", { Rotation = rot }, f)
-table.insert(VigFrames, f); table.insert(VigGrads, g)
-end
-vf(UDim2.fromScale(0, 0), UDim2.new(1, 0, .24, 0), Vector2.new(0, 0), 90)
-vf(UDim2.fromScale(0, 1), UDim2.new(1, 0, .24, 0), Vector2.new(0, 1), 270)
-vf(UDim2.fromScale(0, 0), UDim2.new(.2, 0, 1, 0), Vector2.new(0, 0), 0)
-vf(UDim2.fromScale(1, 0), UDim2.new(.2, 0, 1, 0), Vector2.new(1, 0), 180)
-end
-local function Notify(text)
-local f = new("Frame", {
-AnchorPoint = Vector2.new(.5, 1), Position = UDim2.new(.5, 0, 1, 40),
-Size = UDim2.fromOffset(280, 34), BackgroundColor3 = T.bg, BackgroundTransparency = 1, ZIndex = 100,
-}, Gui)
-corner(f, 10)
-local st = new("UIStroke", { Color = T.accent, Transparency = 1, Thickness = 1.2 }, f)
-local l = new("TextLabel", {
-BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = text, TextTransparency = 1,
-Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = T.text, ZIndex = 101,
-}, f)
-tw(f, .3, { Position = UDim2.new(.5, 0, 1, -24), BackgroundTransparency = .05 }, Enum.EasingStyle.Back)
-tw(st, .3, { Transparency = .4 }); tw(l, .3, { TextTransparency = 0 })
-task.delay(2, function()
-tw(f, .3, { Position = UDim2.new(.5, 0, 1, 40), BackgroundTransparency = 1 })
-tw(st, .3, { Transparency = 1 }); tw(l, .3, { TextTransparency = 1 })
-task.wait(.35); f:Destroy()
-end)
-end
-local baseScale = math.clamp(Camera.ViewportSize.Y / 460, .6, 1)
-local Main = new("CanvasGroup", {
-Name = "Main", AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
-Size = UDim2.fromOffset(540, 360), BackgroundColor3 = T.bg, GroupTransparency = 1, Visible = false,
-}, Gui)
-corner(Main, 14)
-new("UIStroke", { Color = WHITE, Transparency = .6, Thickness = 1.3 }, Main)
-local MainScale = new("UIScale", { Scale = baseScale * .85 }, Main)
-local BG = new("Frame", { Name = "BG", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 0 }, Main)
-local BGGrad = new("UIGradient", {
-Color = ColorSequence.new({ CSK(0, Color3.fromRGB(4, 4, 6)), CSK(.5, Color3.fromRGB(52, 52, 60)), CSK(1, Color3.fromRGB(4, 4, 6)) }),
-Rotation = 30,
-}, BG)
-local Sweep = new("Frame", {
-AnchorPoint = Vector2.new(.5, .5), Size = UDim2.new(0, 140, 1.8, 0), Rotation = 18,
-BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 0,
-}, BG)
-new("UIGradient", { Transparency = NumberSequence.new({ NSK(0, 1), NSK(.5, .93), NSK(1, 1) }) }, Sweep)
-local Dust = {}
-do
-local rng = Random.new(7)
-for i = 1, 30 do
-local sz = rng:NextInteger(2, 4)
-local f = new("Frame", { Size = UDim2.fromOffset(sz, sz), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = .6, ZIndex = 0 }, BG)
-corner(f, 4)
-Dust[i] = {
-f = f, x = rng:NextNumber(), y = rng:NextNumber(), sp = rng:NextNumber(.01, .045),
-dr = rng:NextNumber(-.01, .01), ph = rng:NextNumber(0, 6.28), tw = rng:NextNumber(1, 3),
-}
-end
-end
-local menuOpen = false
-local function bgStep(dt)
-if not (menuOpen and Main.Visible) or not S.bgAnim then return end
-local t = os.clock()
-BGGrad.Rotation = (t * 10) % 360
-BGGrad.Offset = Vector2.new(math.sin(t * .35) * .25, math.cos(t * .27) * .25)
-Sweep.Position = UDim2.fromScale(((t / 6) % 1) * 1.6 - .3, .5)
-for _, d in ipairs(Dust) do
-d.y = d.y + d.sp * dt * Theme.dir
-d.x = d.x + d.dr * dt
-if d.y < -.05 then d.y = 1.05; d.x = math.random()
-elseif d.y > 1.05 then d.y = -.05; d.x = math.random() end
-d.f.Position = UDim2.fromScale(d.x, d.y)
-d.f.BackgroundTransparency = .55 + .35 * math.sin(t * d.tw * Theme.tw + d.ph)
-end
-end
-local Top = new("Frame", { Size = UDim2.new(1, 0, 0, 42), BackgroundColor3 = T.side, BackgroundTransparency = .35 }, Main)
-new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 0), Size = UDim2.new(0, 200, 1, 0),
-Text = "Cozy Hub", Font = Enum.Font.GothamBold, TextSize = 17, TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Left,
-}, Top)
-new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(100, 2), Size = UDim2.new(0, 200, 1, 0),
-Text = "Delta / Xeno", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Left,
-}, Top)
-local CloseBtn = new("TextButton", {
-AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -10, .5, 0), Size = UDim2.fromOffset(26, 26),
-BackgroundColor3 = T.card, Text = "X", Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = T.text,
-}, Top)
-corner(CloseBtn, 8)
-CloseBtn.MouseEnter:Connect(function() tw(CloseBtn, .15, { BackgroundColor3 = T.accent, TextColor3 = Color3.new(0, 0, 0) }) end)
-CloseBtn.MouseLeave:Connect(function() tw(CloseBtn, .15, { BackgroundColor3 = T.card, TextColor3 = T.text }) end)
-local Side = new("ScrollingFrame", {
-Position = UDim2.fromOffset(0, 42), Size = UDim2.new(0, 128, 1, -42), BackgroundColor3 = T.side, BackgroundTransparency = .45,
-ScrollBarThickness = 0, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollingDirection = Enum.ScrollingDirection.Y,
-}, Main)
-new("UIPadding", { PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, Side)
-new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, Side)
-local Indicator = new("Frame", { Position = UDim2.fromOffset(0, 60), Size = UDim2.fromOffset(3, 22), BackgroundColor3 = WHITE, Visible = false }, Main)
-corner(Indicator, 2)
-do
-local dragging, startPos, startInput
-Top.InputBegan:Connect(function(i)
-if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-dragging, startPos, startInput = true, Main.Position, i.Position
-end
-end)
-conn(UIS.InputChanged, function(i)
-if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-local d = i.Position - startInput
-Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-end
-end)
-conn(UIS.InputEnded, function(i)
-if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end
-end)
-end
-local pages, tabs, bars = {}, {}, {}
-local function selectTab(idx, instant)
-for i, p in ipairs(pages) do
-local active = i == idx
-if active then
-p.Visible = true
-if not instant then
-p.Position = UDim2.fromOffset(138, 64)
-tw(p, .3, { Position = UDim2.fromOffset(138, 52) })
-end
-else
-p.Visible = false
-end
-tw(tabs[i], .2, { BackgroundTransparency = active and .1 or 1, TextColor3 = active and T.text or T.sub })
-end
-for i2, bar in ipairs(bars) do
-tw(bar, .25, { Size = UDim2.fromOffset(3, i2 == idx and 20 or 0) }, Enum.EasingStyle.Back)
-end
-end
-local function Tab(name)
-local idx = #pages + 1
-local b = new("TextButton", {
-Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = T.card, BackgroundTransparency = 1,
-Text = name, Font = Enum.Font.GothamMedium, TextSize = 14, TextColor3 = T.sub, LayoutOrder = idx,
-}, Side)
-corner(b, 8)
-local bar = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, -8, .5, 0), Size = UDim2.fromOffset(3, 0), BackgroundColor3 = T.accent }, b)
-corner(bar, 2)
-local page = new("ScrollingFrame", {
-Position = UDim2.fromOffset(138, 52), Size = UDim2.new(1, -148, 1, -62), BackgroundTransparency = 1,
-ScrollBarThickness = 3, ScrollBarImageColor3 = WHITE, CanvasSize = UDim2.new(),
-AutomaticCanvasSize = Enum.AutomaticSize.Y, Visible = false,
-}, Main)
-new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, page)
-new("UIPadding", { PaddingRight = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }, page)
-pages[idx], tabs[idx], bars[idx] = page, b, bar
-b.MouseButton1Click:Connect(function() selectTab(idx) end)
-return page
-end
-local function Section(page, text)
-new("TextLabel", {
-Size = UDim2.new(1, -6, 0, 20), BackgroundTransparency = 1, Text = string.upper(text),
-Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Left,
-}, page)
-end
-local function Card(page, h)
-local f = new("Frame", { Size = UDim2.new(1, -6, 0, h), BackgroundColor3 = T.card, BackgroundTransparency = .2 }, page)
-corner(f, 8)
-new("UIStroke", { Color = WHITE, Transparency = .93, Thickness = 1 }, f)
-f.MouseEnter:Connect(function() tw(f, .15, { BackgroundColor3 = T.hover }) end)
-f.MouseLeave:Connect(function() tw(f, .15, { BackgroundColor3 = T.card }) end)
-return f
-end
-local function cardLabel(f, text, w)
-return new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, w or -70, 1, 0),
-Text = text, Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Left,
-}, f)
-end
-local function InfoCard(page, text, h)
-local f = Card(page, h)
-return new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -24, 1, 0), TextWrapped = true,
-Text = text, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Left,
-}, f)
-end
-local function Input(page, placeholder)
-local f = Card(page, 34)
-local box = new("TextBox", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -24, 1, 0), Text = "",
-PlaceholderText = placeholder, PlaceholderColor3 = T.sub, TextColor3 = T.text, Font = Enum.Font.GothamMedium,
-TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false,
-}, f)
-return box, f
-end
-local function Toggle(page, text, key, cb)
-local f = Card(page, 36)
-cardLabel(f, text)
-local sw = new("Frame", {
-AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -10, .5, 0), Size = UDim2.fromOffset(40, 20), BackgroundColor3 = T.off,
-}, f)
-corner(sw, 10)
-local knob = new("Frame", { Size = UDim2.fromOffset(14, 14), Position = UDim2.fromOffset(3, 3), BackgroundColor3 = WHITE }, sw)
-corner(knob, 7)
-local btn = new("TextButton", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "" }, f)
-local function set(v, silent)
-S[key] = v
-tw(sw, .2, { BackgroundColor3 = v and T.accent or T.off })
-tw(knob, .25, { Position = v and UDim2.fromOffset(23, 3) or UDim2.fromOffset(3, 3), BackgroundColor3 = v and Color3.new(0, 0, 0) or T.text }, Enum.EasingStyle.Back)
-if cb and not silent then task.spawn(cb, v) end
-end
-btn.MouseButton1Click:Connect(function() set(not S[key]) end)
-set(S[key], true)
-Toggles[key] = function(v) set(v) end
-end
-local function Slider(page, text, key, min, max, step, suffix, cb)
-local f = Card(page, 52)
-new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 6), Size = UDim2.new(1, -90, 0, 16),
-Text = text, Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Left,
-}, f)
-local val = new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.new(1, -78, 0, 6), Size = UDim2.fromOffset(66, 16),
-Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = WHITE, TextXAlignment = Enum.TextXAlignment.Right,
-}, f)
-local bar = new("Frame", { Position = UDim2.new(0, 12, 0, 34), Size = UDim2.new(1, -24, 0, 6), BackgroundColor3 = T.off }, f)
-corner(bar, 3)
-local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = WHITE }, bar)
-corner(fill, 3)
-local knob = new("Frame", {
-AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(14, 14), BackgroundColor3 = WHITE,
-}, bar)
-corner(knob, 7)
-local function setv(v, anim, silent)
-v = math.clamp(math.floor(v / step + .5) * step, min, max)
-S[key] = v
-local a = (v - min) / (max - min)
-val.Text = tostring(v) .. (suffix or "")
-if anim then
-tw(fill, .08, { Size = UDim2.fromScale(a, 1) }); tw(knob, .08, { Position = UDim2.fromScale(a, .5) })
-else
-fill.Size = UDim2.fromScale(a, 1); knob.Position = UDim2.fromScale(a, .5)
-end
-if cb and not silent then cb(v) end
-end
-local dragging = false
-local function fromInput(i)
-local a = math.clamp((i.Position.X - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
-setv(min + (max - min) * a, true)
-end
-local hit = new("TextButton", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 24), Size = UDim2.new(1, 0, 0, 28), Text = "" }, f)
-hit.InputBegan:Connect(function(i)
-if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-dragging = true; fromInput(i)
-end
-end)
-conn(UIS.InputChanged, function(i)
-if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then fromInput(i) end
-end)
-conn(UIS.InputEnded, function(i)
-if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end
-end)
-setv(S[key], false, true)
-Sliders[key] = function(v) setv(v, true) end
-end
-local function Selector(page, text, key, options, cb)
-local f = Card(page, 36)
-cardLabel(f, text, -150)
-local b = new("TextButton", {
-AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -8, .5, 0), Size = UDim2.fromOffset(130, 24),
-BackgroundColor3 = T.off, Text = S[key], Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = T.text,
-}, f)
-corner(b, 6)
-Selectors[key] = function(v, fire) S[key] = v; b.Text = v; if fire and cb then task.spawn(cb, v) end end
-b.MouseButton1Click:Connect(function()
-local idx = table.find(options, S[key]) or 1
-idx = idx % #options + 1
-S[key] = options[idx]
-b.Text = S[key]
-b.Size = UDim2.fromOffset(120, 24)
-tw(b, .25, { Size = UDim2.fromOffset(130, 24) }, Enum.EasingStyle.Back)
-if cb then task.spawn(cb, S[key]) end
-end)
-end
-local function Button(page, text, cb)
-local f = Card(page, 36)
-local b = new("TextButton", {
-Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = text,
-Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = T.text,
-}, f)
-b.MouseButton1Click:Connect(function()
-tw(f, .1, { BackgroundColor3 = T.accent })
-tw(b, .1, { TextColor3 = Color3.new(0, 0, 0) })
-task.delay(.12, function() tw(f, .25, { BackgroundColor3 = T.card }); tw(b, .25, { TextColor3 = T.text }) end)
-task.spawn(cb)
-end)
-end
-local function setMenu(v)
-if not unlocked then return end
-menuOpen = v
-if v then
-Main.Visible = true
-MainScale.Scale = baseScale * .85
-Main.GroupTransparency = 1
-tw(MainScale, .3, { Scale = baseScale }, Enum.EasingStyle.Back)
-tw(Main, .18, { GroupTransparency = 0 })
-else
-tw(MainScale, .18, { Scale = baseScale * .88 }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-tw(Main, .18, { GroupTransparency = 1 }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-task.delay(.2, function() if not menuOpen then Main.Visible = false end end)
-end
-end
-CloseBtn.MouseButton1Click:Connect(function() setMenu(false) end)
-conn(UIS.InputBegan, function(i, gp)
-if not gp and unlocked and i.KeyCode == Enum.KeyCode.RightShift then setMenu(not menuOpen) end
-if unlocked and i.UserInputType == Enum.UserInputType.MouseButton3 and Toggles.fly then
-Toggles.fly(not S.fly)
-end
-end)
-local Fab = new("TextButton", {
-AnchorPoint = Vector2.new(.5, .5), Position = UDim2.new(0, 40, .5, 0), Size = UDim2.fromOffset(0, 0),
-BackgroundColor3 = Color3.fromRGB(8, 8, 10), Text = "", Visible = false, ZIndex = 20,
-}, Gui)
-corner(Fab, 28)
-local FabStroke = new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, Fab)
-local FabGrad = new("UIGradient", {
-Color = ColorSequence.new({ CSK(0, Color3.new(1, 1, 1)), CSK(.5, Color3.fromRGB(60, 60, 66)), CSK(1, Color3.new(1, 1, 1)) }),
-}, FabStroke)
-new("TextLabel", {
-BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "CH", Font = Enum.Font.GothamBlack,
-TextSize = 16, TextColor3 = WHITE, ZIndex = 21,
-}, Fab)
-local LockDot = new("Frame", {
-AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.84, .16), Size = UDim2.fromOffset(0, 0),
-BackgroundColor3 = WHITE, ZIndex = 22,
-}, Fab)
-corner(LockDot, 8)
-new("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 2 }, LockDot)
-local fabLocked = false
-local FAB = 50
-do
-local dragging, dragged, dragStart, startAbs = false, false, nil, nil
-local lastTap, prevMenu = 0, false
-Fab.InputBegan:Connect(function(i)
-if not unlocked then return end
-if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-dragging, dragged = true, false
-dragStart = Vector2.new(i.Position.X, i.Position.Y)
-startAbs = Fab.AbsolutePosition + Fab.AbsoluteSize / 2
-end
-end)
-conn(UIS.InputChanged, function(i)
-if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-local d = Vector2.new(i.Position.X, i.Position.Y) - dragStart
-if d.Magnitude > 8 then dragged = true end
-if dragged and not fabLocked then
-local vp = Camera.ViewportSize
-local np = startAbs + d
-Fab.Position = UDim2.fromOffset(math.clamp(np.X, 26, vp.X - 26), math.clamp(np.Y, 26, vp.Y - 26))
-end
-end
-end)
-conn(UIS.InputEnded, function(i)
-if dragging and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
-dragging = false
-if dragged then return end
-local now = os.clock()
-if now - lastTap < .3 then
-lastTap = 0
-setMenu(prevMenu)
-fabLocked = not fabLocked
-tw(LockDot, .3, { Size = fabLocked and UDim2.fromOffset(14, 14) or UDim2.fromOffset(0, 0) }, Enum.EasingStyle.Back)
-Notify(fabLocked and "Иконка закреплена" or "Иконка откреплена — можно двигать")
-else
-lastTap = now
-prevMenu = menuOpen
-setMenu(not menuOpen) -- сразу, без ожидания
-end
-end
-end)
-end
-task.spawn(function()
-while Fab.Parent do
-if Fab.Visible then
-tw(Fab, 1.3, { Size = UDim2.fromOffset(FAB + 4, FAB + 4) }, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut); task.wait(1.3)
-tw(Fab, 1.3, { Size = UDim2.fromOffset(FAB, FAB) }, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut); task.wait(1.3)
-else
-task.wait(.3)
-end
-end
-end)
-local ESPColors = {
-["Красный"] = Color3.fromRGB(255, 70, 70), ["Зелёный"] = Color3.fromRGB(80, 255, 120),
-["Синий"] = Color3.fromRGB(80, 150, 255), ["Фиолетовый"] = Color3.fromRGB(170, 110, 255),
-["Белый"] = Color3.fromRGB(255, 255, 255), ["Жёлтый"] = Color3.fromRGB(255, 225, 80),
-}
-local ESPColorNames = { "Красный", "Зелёный", "Синий", "Фиолетовый", "Белый", "Жёлтый" }
-local function getAimPart(char)
-if S.aimPartSel == "Голова" then return char:FindFirstChild("Head") end
-if S.aimPartSel == "Торс" then return char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") end
-return char:FindFirstChild("HumanoidRootPart")
-end
-local function isEnemy(plr)
-if plr.Team and LP.Team and plr.Team == LP.Team then return false end
-return true
-end
-local function aliveChar(plr)
-local c = plr.Character
-local h = c and c:FindFirstChildOfClass("Humanoid")
-if c and h and h.Health > 0 then return c, h end
-end
-local FovCircle = new("Frame", {
-AnchorPoint = Vector2.new(.5, .5), BackgroundTransparency = 1, Visible = false, Size = UDim2.fromOffset(240, 240),
-}, ESPLayer)
-corner(FovCircle, 999)
-local FovStroke = new("UIStroke", { Color = WHITE, Thickness = 1.5, Transparency = .3 }, FovCircle)
-local function aimCenter()
-if UIS.TouchEnabled and not UIS.MouseEnabled then return Camera.ViewportSize / 2 end
-return UIS:GetMouseLocation()
-end
-local rayParams = RaycastParams.new()
-rayParams.FilterType = Enum.RaycastFilterType.Exclude
-local function visibleCheck(part, char)
-rayParams.FilterDescendantsInstances = { LP.Character, char }
-local o = Camera.CFrame.Position
-return workspace:Raycast(o, part.Position - o, rayParams) == nil
-end
-local function closestTarget()
-local center = aimCenter()
-local best, bestD = nil, S.aimFov
-for _, plr in ipairs(Players:GetPlayers()) do
-if plr ~= LP and (not S.aimTeam or isEnemy(plr)) then
-local char = aliveChar(plr)
-local part = char and getAimPart(char)
-if part then
-local p, on = Camera:WorldToViewportPoint(part.Position)
-if on then
-local d = (Vector2.new(p.X, p.Y) - center).Magnitude
-if d < bestD and (not S.aimWall or visibleCheck(part, char)) then best, bestD = part, d end
-end
-end
-end
-end
-return best
-end
-local function aimStep()
-local center = aimCenter()
-FovCircle.Visible = unlocked and S.aim and S.aimShowFov
-FovCircle.Size = UDim2.fromOffset(S.aimFov * 2, S.aimFov * 2)
-FovCircle.Position = UDim2.fromOffset(center.X, center.Y)
-if not S.aim then return end
-local touchOnly = UIS.TouchEnabled and not UIS.MouseEnabled
-if S.aimHold and not touchOnly and not UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-FovStroke.Color = T.accent
-return
-end
-local part = closestTarget()
-FovStroke.Color = part and Color3.fromRGB(255, 90, 110) or T.accent
-if part then
-local pos = part.Position + part.AssemblyLinearVelocity * (S.aimPred / 100)
-local alpha = math.clamp(1 - S.aimSmooth / 100, .03, 1)
-Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(Camera.CFrame.Position, pos), alpha)
-end
-end
-local espObjs = {}
-local GHOST_N = 24
-local BLACK = Color3.new(0, 0, 0)
-local HP_LOW, HP_HIGH = Color3.fromRGB(255, 70, 70), Color3.fromRGB(80, 255, 120)
-local function makeESP(plr)
-local o = { guis = {}, shown = false }
-local fo = new("Folder", { Name = plr.Name }, ESPLayer)
-o.folder = fo
-local ANCH = Vector2.new(.5, .5)
-local function G(class, props, track)
-local g = new(class, props, fo)
-if track ~= false then table.insert(o.guis, g) end
-return g
-end
-o.box = G("Frame", { BackgroundTransparency = 1, Visible = false })
-o.boxStroke = new("UIStroke", { Thickness = 1.5 }, o.box)
-o.corners = {}
-for i = 1, 8 do o.corners[i] = G("Frame", { Visible = false }) end
-o.diamond = G("Frame", { AnchorPoint = ANCH, BackgroundTransparency = 1, Rotation = 45, Visible = false })
-o.diamondStroke = new("UIStroke", { Thickness = 1.8 }, o.diamond)
-o.circle = G("Frame", { AnchorPoint = ANCH, BackgroundTransparency = 1, Visible = false })
-corner(o.circle, 999)
-o.circleStroke = new("UIStroke", { Thickness = 1.8 }, o.circle)
-o.tracer = G("Frame", { AnchorPoint = ANCH, Visible = false })
-o.tracerGrad = new("UIGradient", { Enabled = false, Transparency = NumberSequence.new({ NSK(0, 1), NSK(1, 0) }) }, o.tracer)
-o.name = G("TextLabel", {
-BackgroundTransparency = 1, AnchorPoint = Vector2.new(.5, 1), Size = UDim2.fromOffset(220, 16),
-Font = Enum.Font.GothamBold, TextSize = 12, TextStrokeTransparency = .4, Visible = false,
-})
-o.hpBg = G("Frame", { BackgroundColor3 = Color3.fromRGB(15, 15, 15), Visible = false })
-o.hp = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.fromScale(1, 1) }, o.hpBg)
-o.hbFrame = G("Frame", { AnchorPoint = Vector2.new(.5, 1), BackgroundTransparency = 1, Size = UDim2.fromOffset(130, 12), Visible = false })
-o.hbScale = new("UIScale", {}, o.hbFrame)
-o.hbCells = {}
-for i = 1, 10 do
-local c = new("Frame", { Size = UDim2.fromOffset(11, 11), Position = UDim2.fromOffset((i - 1) * 13, 0) }, o.hbFrame)
-new("UIStroke", { Color = BLACK, Thickness = 1.5 }, c)
-o.hbCells[i] = c
-end
-o.pill = G("Frame", { AnchorPoint = Vector2.new(.5, 1), Size = UDim2.fromOffset(96, 12), BackgroundColor3 = Color3.fromRGB(12, 12, 14), BackgroundTransparency = .15, Visible = false })
-corner(o.pill, 6)
-new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = .6, Thickness = 1 }, o.pill)
-o.pillScale = new("UIScale", {}, o.pill)
-o.pillFill = new("Frame", { Size = UDim2.fromScale(1, 1) }, o.pill)
-corner(o.pillFill, 6)
-o.pillText = new("TextLabel", {
-BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Font = Enum.Font.GothamBold, TextSize = 9,
-TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = .5, ZIndex = 2,
-}, o.pill)
-o.hearts = G("TextLabel", {
-BackgroundTransparency = 1, AnchorPoint = Vector2.new(.5, 1), Size = UDim2.fromOffset(180, 18),
-Font = Enum.Font.GothamBold, TextSize = 14, RichText = true, TextStrokeTransparency = .5, Visible = false,
-})
-o.hpText = G("TextLabel", {
-BackgroundTransparency = 1, AnchorPoint = Vector2.new(.5, 1), Size = UDim2.fromOffset(120, 16),
-Font = Enum.Font.GothamBold, TextSize = 13, TextStrokeTransparency = .4, Visible = false,
-})
-o.arrow = G("TextLabel", {
-AnchorPoint = ANCH, Size = UDim2.fromOffset(28, 28), BackgroundTransparency = 1, Text = "▲",
-Font = Enum.Font.GothamBlack, TextSize = 24, TextStrokeTransparency = .35, Visible = false,
-}, false)
-o.arrowTxt = G("TextLabel", {
-AnchorPoint = ANCH, Size = UDim2.fromOffset(70, 14), BackgroundTransparency = 1,
-Font = Enum.Font.GothamBold, TextSize = 11, TextStrokeTransparency = .35, Visible = false,
-}, false)
-espObjs[plr] = o
-return o
-end
-local function hideGuis(o)
-if o.shown then
-for _, g in ipairs(o.guis) do g.Visible = false end
-o.shown = false
-end
-end
-local function hideAll(o)
-hideGuis(o)
-o.arrow.Visible = false
-o.arrowTxt.Visible = false
-if o.hl then o.hl.Enabled = false end
-end
-local function destroyESP(plr)
-local o = espObjs[plr]
-if not o then return end
-if o.folder then pcall(function() o.folder:Destroy() end) end
-if o.hl then pcall(function() o.hl:Destroy() end) end
-espObjs[plr] = nil
-end
-local function arrowUpdate(o, root, col, dist, onScreen)
-if not S.espArrows or (onScreen and not S.espArrowAlways) then
-o.arrow.Visible = false; o.arrowTxt.Visible = false
-return
-end
-local rel = Camera.CFrame:PointToObjectSpace(root.Position)
-local v = Vector2.new(rel.X, rel.Z)
-if v.Magnitude < 1e-3 then
-o.arrow.Visible = false; o.arrowTxt.Visible = false
-return
-end
-v = v.Unit
-local vp = Camera.ViewportSize
-local R = math.min(vp.X, vp.Y) * (S.arrowRadius / 100)
-local c = vp / 2 + v * R
-o.arrow.Visible = true
-o.arrow.Position = UDim2.fromOffset(c.X, c.Y)
-o.arrow.Rotation = math.deg(math.atan2(v.X, -v.Y))
-o.arrow.TextColor3 = col
-local lp = c - v * 26
-o.arrowTxt.Visible = true
-o.arrowTxt.Position = UDim2.fromOffset(lp.X, lp.Y)
-o.arrowTxt.TextColor3 = col
-o.arrowTxt.Text = string.format("%dm", dist)
-end
-local function ghostUpdate(o, root, col, dist)
-if true or dist > math.min(S.espDist, 350) then
-if o.dots then for _, d in ipairs(o.dots) do d.Visible = false end end
-return
-end
-if not o.dots then
-o.dots = {}
-for i = 1, GHOST_N do
-local d = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Visible = false, Size = UDim2.fromOffset(6, 6) }, o.folder)
-corner(d, 14)
-table.insert(o.guis, d)
-o.dots[i] = d
-end
-end
-local t = os.clock()
-local base = root.Position
-local used = 0
-local function dot(wp, size, tr)
-used = used + 1
-local d = o.dots[used]
-if not d then return end
-local p, on = Camera:WorldToViewportPoint(wp)
-if on then
-local sz = math.clamp(size * 300 / math.max(p.Z, 1), 2, 28)
-d.Size = UDim2.fromOffset(sz, sz)
-d.Position = UDim2.fromOffset(p.X, p.Y)
-d.BackgroundColor3 = col
-d.BackgroundTransparency = tr
-d.Visible = true
-else
-d.Visible = false
-end
-end
-local style = S.espGhostStyle
-if style == "Призраки" then
-for i = 0, 2 do
-for k = 0, 6 do
-local tt = t - k * .07
-local a = tt * (1.5 + i * .35) + i * 2.1
-local r = 2.8 + i * .45
-local h = math.sin(tt * 1.7 + i * 1.3) * 1.5 + .4
-dot(base + Vector3.new(math.cos(a) * r, h, math.sin(a) * r), .95 * (1 - k / 9), .05 + k / 7 * .85)
-end
-end
-elseif style == "Таргет-кольцо" then
-local y = -2.6 + (math.sin(t * 1.8) * .5 + .5) * 5.2
-for j = 0, 23 do
-local a = j / 24 * math.pi * 2 + t * 2
-dot(base + Vector3.new(math.cos(a) * 2.5, y, math.sin(a) * 2.5), .34, .15 + .55 * (math.sin(a * 2 - t * 3) * .5 + .5))
-end
-else
-for j = 0, 23 do
-local a = t * 2.5 + j * .55
-dot(base + Vector3.new(math.cos(a) * 2.2, -2.8 + j / 23 * 5.6, math.sin(a) * 2.2), .32, j / 23 * .75)
-end
-end
-for i = used + 1, GHOST_N do o.dots[i].Visible = false end
-end
-local LINE_N = 40
-local R15BONES = {
-{ "Head", "UpperTorso" }, { "UpperTorso", "LowerTorso" },
-{ "UpperTorso", "LeftUpperArm" }, { "LeftUpperArm", "LeftLowerArm" }, { "LeftLowerArm", "LeftHand" },
-{ "UpperTorso", "RightUpperArm" }, { "RightUpperArm", "RightLowerArm" }, { "RightLowerArm", "RightHand" },
-{ "LowerTorso", "LeftUpperLeg" }, { "LeftUpperLeg", "LeftLowerLeg" }, { "LeftLowerLeg", "LeftFoot" },
-{ "LowerTorso", "RightUpperLeg" }, { "RightUpperLeg", "RightLowerLeg" }, { "RightLowerLeg", "RightFoot" },
-}
-local R6BONES = {
-{ "Head", "Torso" }, { "Torso", "Left Arm" }, { "Torso", "Right Arm" }, { "Torso", "Left Leg" }, { "Torso", "Right Leg" },
-}
-local function shapeSegs(st, cf, size, char)
-local segs = {}
-local function add(a, b) segs[#segs + 1] = { a, b } end
-local hx, hy, hz = size.X / 2, size.Y / 2, size.Z / 2
-local R = math.max(hx, hz)
-local t = os.clock()
-local TAU = math.pi * 2
-if st == "3D бокс" or st == "3D углы" then
-local c = {}
-for i = 0, 7 do
-c[i] = Vector3.new((i % 2 == 0) and -hx or hx, (math.floor(i / 2) % 2 == 0) and -hy or hy, (i >= 4) and hz or -hz)
-end
-for i = 0, 7 do
-for _, bit in ipairs({ 1, 2, 4 }) do
-local j = bit32.bxor(i, bit)
-if st == "3D бокс" then
-if i < j then add(cf * c[i], cf * c[j]) end
-else
-add(cf * c[i], cf * (c[i] + (c[j] - c[i]) * .3))
-end
-end
-end
-elseif st == "Октаэдр" then
-local r, ang = R * 1.15, t * 1.2
-local top, bot = Vector3.new(0, hy * 1.1, 0), Vector3.new(0, -hy * 1.1, 0)
-local mid = {}
-for k = 0, 3 do
-local a = ang + k * math.pi / 2
-mid[k] = Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
-end
-for k = 0, 3 do
-add(cf * top, cf * mid[k])
-add(cf * bot, cf * mid[k])
-add(cf * mid[k], cf * mid[(k + 1) % 4])
-end
-elseif st == "Шестигранник" then
-local r = R * 1.3
-local top, bot = {}, {}
-for k = 0, 5 do
-local a = k * math.pi / 3 + math.pi / 6
-top[k] = Vector3.new(math.cos(a) * r, hy, math.sin(a) * r)
-bot[k] = Vector3.new(math.cos(a) * r, -hy, math.sin(a) * r)
-end
-for k = 0, 5 do
-local n = (k + 1) % 6
-add(cf * top[k], cf * top[n])
-add(cf * bot[k], cf * bot[n])
-add(cf * top[k], cf * bot[k])
-end
-elseif st == "Цилиндр" then
-local r, n = R * 1.25, 16
-for k = 0, n - 1 do
-local a1, a2 = k / n * TAU, (k + 1) / n * TAU
-local t1 = Vector3.new(math.cos(a1) * r, hy, math.sin(a1) * r)
-local t2 = Vector3.new(math.cos(a2) * r, hy, math.sin(a2) * r)
-local b1 = Vector3.new(math.cos(a1) * r, -hy, math.sin(a1) * r)
-local b2 = Vector3.new(math.cos(a2) * r, -hy, math.sin(a2) * r)
-add(cf * t1, cf * t2)
-add(cf * b1, cf * b2)
-if k % 4 == 0 then add(cf * t1, cf * b1) end
-end
-elseif st == "Сфера" then
-local rx, ry = R * 1.35, hy * 1.08
-local spin = CFrame.Angles(0, t * .8, 0)
-local n = 12
-local function pt(circle, k)
-local a = k / n * TAU
-if circle == 1 then return Vector3.new(math.cos(a) * rx, 0, math.sin(a) * rx) end
-if circle == 2 then return Vector3.new(math.cos(a) * rx, math.sin(a) * ry, 0) end
-return Vector3.new(0, math.sin(a) * ry, math.cos(a) * rx)
-end
-for circle = 1, 3 do
-for k = 0, n - 1 do
-add(cf * (spin * pt(circle, k)), cf * (spin * pt(circle, k + 1)))
-end
-end
-else
-local bones = char:FindFirstChild("UpperTorso") and R15BONES or R6BONES
-for _, b in ipairs(bones) do
-local p1, p2 = char:FindFirstChild(b[1]), char:FindFirstChild(b[2])
-if p1 and p2 then add(p1.Position, p2.Position) end
-end
-end
-return segs
-end
-local function drawLines(o, segs, col)
-if not o.lines then
-o.lines = {}
-for i = 1, LINE_N do
-local l = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Visible = false }, o.folder)
-table.insert(o.guis, l)
-o.lines[i] = l
-end
-end
-local inv = Camera.CFrame:Inverse()
-local vp = Camera.ViewportSize
-local sc = (vp.Y / 2) / math.tan(math.rad(Camera.FieldOfView) / 2)
-local function proj(wp)
-local cp = inv * wp
-local depth = -cp.Z
-if depth < .1 then return nil end
-return Vector2.new(vp.X / 2 + cp.X / depth * sc, vp.Y / 2 - cp.Y / depth * sc)
-end
-local n = math.min(#segs, LINE_N)
-for i = 1, n do
-local a, b = proj(segs[i][1]), proj(segs[i][2])
-local l = o.lines[i]
-if a and b then
-local d = b - a
-l.Visible = true
-l.BackgroundColor3 = col
-l.Size = UDim2.fromOffset(d.Magnitude + 1, 1.6)
-l.Position = UDim2.fromOffset((a.X + b.X) / 2, (a.Y + b.Y) / 2)
-l.Rotation = math.deg(math.atan2(d.Y, d.X))
-else
-l.Visible = false
-end
-end
-for i = n + 1, LINE_N do o.lines[i].Visible = false end
-end
-local function updateESP(plr, o)
-local char, hum = aliveChar(plr)
-local root = char and char:FindFirstChild("HumanoidRootPart")
-if not S.esp or not root then return hideAll(o) end
-local dist = (Camera.CFrame.Position - root.Position).Magnitude
-if dist > S.espDist then return hideAll(o) end
-local col = (S.espTeamCol and plr.Team) and plr.TeamColor.Color or ESPColors[S.espColor]
-if S.espChams then
-if not o.hl or o.hl.Parent ~= char then
-if o.hl then o.hl:Destroy() end
-o.hl = new("Highlight", { Name = "CozyHL", DepthMode = Enum.HighlightDepthMode.AlwaysOnTop, FillTransparency = .55, OutlineTransparency = 0 }, char)
-end
-o.hl.FillColor = col; o.hl.OutlineColor = col; o.hl.Enabled = true
-elseif o.hl then
-o.hl.Enabled = false
-end
-local rp, on = Camera:WorldToViewportPoint(root.Position)
-arrowUpdate(o, root, col, dist, on)
-if not on then return hideGuis(o) end
-local cf, size = char:GetBoundingBox()
-local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
-local behind = false
-for x = -1, 1, 2 do for y = -1, 1, 2 do for z = -1, 1, 2 do
-local p = Camera:WorldToViewportPoint((cf * CFrame.new(size.X / 2 * x, size.Y / 2 * y, size.Z / 2 * z)).Position)
-if p.Z < 0 then behind = true end
-minX, minY = math.min(minX, p.X), math.min(minY, p.Y)
-maxX, maxY = math.max(maxX, p.X), math.max(maxY, p.Y)
-end end end
-if behind then return hideGuis(o) end
-local w, h = maxX - minX, maxY - minY
-local cx, cy = minX + w / 2, minY + h / 2
-o.shown = true
-local st = S.espStyle
-o.box.Visible = st == "Бокс"
-if st == "Бокс" then
-o.box.Position = UDim2.fromOffset(minX, minY)
-o.box.Size = UDim2.fromOffset(w, h)
-o.boxStroke.Color = col
-end
-local isCorner = st == "Углы"
-local L = math.clamp(math.min(w, h) * .28, 6, 22)
-local cr = {
-{ minX, minY, L, 2 }, { minX, minY, 2, L },
-{ minX + w - L, minY, L, 2 }, { minX + w - 2, minY, 2, L },
-{ minX, minY + h - 2, L, 2 }, { minX, minY + h - L, 2, L },
-{ minX + w - L, minY + h - 2, L, 2 }, { minX + w - 2, minY + h - L, 2, L },
-}
-for i, c in ipairs(o.corners) do
-c.Visible = isCorner
-if isCorner then
-local d = cr[i]
-c.Position = UDim2.fromOffset(d[1], d[2])
-c.Size = UDim2.fromOffset(d[3], d[4])
-c.BackgroundColor3 = col
-end
-end
-o.diamond.Visible = st == "Ромб"
-if st == "Ромб" then
-local side = math.max(h, w * 1.2) / 1.4142
-o.diamond.Position = UDim2.fromOffset(cx, cy)
-o.diamond.Size = UDim2.fromOffset(side, side)
-o.diamondStroke.Color = col
-end
-o.circle.Visible = st == "Круг"
-if st == "Круг" then
-local dm = math.max(h * .95, w)
-o.circle.Position = UDim2.fromOffset(cx, cy)
-o.circle.Size = UDim2.fromOffset(dm, dm)
-o.circleStroke.Color = col
-end
-if S.esp3d ~= "Выкл" then
-drawLines(o, shapeSegs(S.esp3d, cf, size, char), col)
-o.linesOn = true
-elseif o.linesOn then
-for _, l in ipairs(o.lines) do l.Visible = false end
-o.linesOn = false
-end
-o.name.Visible = S.espName
-o.name.Position = UDim2.fromOffset(cx, minY - 2)
-o.name.TextColor3 = col
-o.name.Text = string.format("%s  [%dm]", plr.DisplayName, dist)
-local frac = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
-local hpCol = HP_LOW:Lerp(HP_HIGH, frac)
-local hs = S.espHpStyle
-local topY = minY - 4 - (S.espName and 16 or 0)
-o.hpBg.Visible = hs == "Полоска"
-if hs == "Полоска" then
-o.hpBg.Position = UDim2.fromOffset(minX - 6, minY)
-o.hpBg.Size = UDim2.fromOffset(3, h)
-o.hp.Size = UDim2.fromScale(1, frac)
-o.hp.BackgroundColor3 = hpCol
-end
-o.hbFrame.Visible = hs == "Хотбар"
-if hs == "Хотбар" then
-o.hbFrame.Position = UDim2.fromOffset(cx, topY)
-o.hbScale.Scale = math.clamp(w / 75, .55, 1.25)
-local full = math.floor(frac * 10 + .5)
-for i, c in ipairs(o.hbCells) do
-local fill = i <= full
-c.BackgroundColor3 = fill and hpCol or Color3.fromRGB(30, 30, 34)
-c.BackgroundTransparency = fill and 0 or .35
-end
-end
-o.pill.Visible = hs == "Плашка"
-if hs == "Плашка" then
-o.pill.Position = UDim2.fromOffset(cx, topY)
-o.pillScale.Scale = math.clamp(w / 75, .6, 1.25)
-o.pillFill.Size = UDim2.fromScale(math.max(frac, .02), 1)
-o.pillFill.BackgroundColor3 = hpCol
-o.pillText.Text = tostring(math.floor(hum.Health))
-end
-o.hearts.Visible = hs == "Сердца"
-if hs == "Сердца" then
-local n = math.floor(frac * 10 + .5)
-o.hearts.Position = UDim2.fromOffset(cx, topY + 2)
-o.hearts.TextSize = math.clamp(w / 4.5, 11, 19)
-o.hearts.Text = string.format('<font color="rgb(255,70,90)">%s</font><font color="rgb(60,60,68)">%s</font>',
-string.rep("♥", n), string.rep("♥", 10 - n))
-end
-o.hpText.Visible = hs == "Цифры"
-if hs == "Цифры" then
-o.hpText.Position = UDim2.fromOffset(cx, topY + 2)
-o.hpText.TextColor3 = hpCol
-o.hpText.Text = string.format("%d HP", hum.Health)
-end
-if S.espTracer then
-local vp = Camera.ViewportSize
-local from
-if S.espTracerPos == "Центр" then from = vp / 2
-elseif S.espTracerPos == "Сверху" then from = Vector2.new(vp.X / 2, 0)
-else from = Vector2.new(vp.X / 2, vp.Y) end
-local to = Vector2.new(rp.X, rp.Y)
-local d = to - from
-local th = (S.espTracerStyle == "Толстая") and 3 or 1.5
-o.tracerGrad.Enabled = S.espTracerStyle == "Градиент"
-o.tracer.Visible = true
-o.tracer.BackgroundColor3 = col
-o.tracer.Size = UDim2.fromOffset(d.Magnitude, th)
-o.tracer.Position = UDim2.fromOffset((from.X + to.X) / 2, (from.Y + to.Y) / 2)
-o.tracer.Rotation = math.deg(math.atan2(d.Y, d.X))
-else
-o.tracer.Visible = false
-end
-ghostUpdate(o, root, col, dist)
-end
-conn(Players.PlayerRemoving, destroyESP)
-local function espStep()
-for _, plr in ipairs(Players:GetPlayers()) do
-if plr ~= LP then
-local o = espObjs[plr] or makeESP(plr)
-updateESP(plr, o)
-end
-end
-end
-local PO = {}
-local function playerStep()
-local char = LP.Character
-local hum = char and char:FindFirstChildOfClass("Humanoid")
-if not hum then return end
-if PO.hum ~= hum then PO = { hum = hum } end
-if S.speed then
-if PO.ws == nil then PO.ws = hum.WalkSpeed end
-hum.WalkSpeed = S.speedVal
-elseif PO.ws ~= nil then
-hum.WalkSpeed = PO.ws; PO.ws = nil
-end
-if S.jump then
-if PO.jp == nil then PO.jp, PO.ujp = hum.JumpPower, hum.UseJumpPower end
-hum.UseJumpPower = true
-hum.JumpPower = S.jumpVal
-elseif PO.jp ~= nil then
-hum.UseJumpPower = PO.ujp; hum.JumpPower = PO.jp; PO.jp = nil
-end
-end
-conn(UIS.JumpRequest, function()
-if S.infJump and unlocked then
-local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
-end
-end)
-local Fly = { vel = Vector3.zero }
-local function flyStop()
-if Fly.bv then Fly.bv:Destroy() end
-if Fly.bg then Fly.bg:Destroy() end
-Fly.bv, Fly.bg = nil, nil
-local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-if hum then hum.PlatformStand = false end
-end
-local function flyStart()
-local char = LP.Character
-local root = char and char:FindFirstChild("HumanoidRootPart")
-local hum = char and char:FindFirstChildOfClass("Humanoid")
-if not root or not hum then return end
-Fly.bv = new("BodyVelocity", { MaxForce = Vector3.new(1e6, 1e6, 1e6), Velocity = Vector3.zero, P = 1e4 }, root)
-Fly.bg = new("BodyGyro", { MaxTorque = Vector3.new(1e6, 1e6, 1e6), P = 1e4, D = 500, CFrame = root.CFrame }, root)
-hum.PlatformStand = true
-Fly.vel = Vector3.zero
-if not Fly.controls then
-pcall(function()
-local pm = require(LP.PlayerScripts:WaitForChild("PlayerModule", 2))
-Fly.controls = pm:GetControls()
-end)
-end
-end
-local function flyStep(dt)
-if not S.fly then return end
-local char = LP.Character
-local root = char and char:FindFirstChild("HumanoidRootPart")
-local hum = char and char:FindFirstChildOfClass("Humanoid")
-if not root or not hum then return end
-if not Fly.bv or Fly.bv.Parent ~= root then
-flyStop(); flyStart()
-if not Fly.bv then return end
-end
-local cf = Camera.CFrame
-local move, got = Vector3.zero, false
-if Fly.controls then
-local ok, mv = pcall(function() return Fly.controls:GetMoveVector() end)
-if ok and typeof(mv) == "Vector3" then
-move = cf.RightVector * mv.X + cf.LookVector * (-mv.Z)
-got = true
-end
-end
-if not got then
-local md = hum.MoveDirection
-local flat = Vector3.new(cf.LookVector.X, 0, cf.LookVector.Z)
-if flat.Magnitude > 0 then flat = flat.Unit end
-move = md + Vector3.new(0, cf.LookVector.Y * md:Dot(flat), 0)
-end
-local vert = 0
-local typing = UIS:GetFocusedTextBox() ~= nil
-if Fly.up or (not typing and UIS:IsKeyDown(Enum.KeyCode.Space)) then vert = vert + 1 end
-if Fly.down or (not typing and (UIS:IsKeyDown(Enum.KeyCode.LeftControl) or UIS:IsKeyDown(Enum.KeyCode.Q))) then vert = vert - 1 end
-local target = (move + Vector3.new(0, vert, 0)) * S.flySpeed
-Fly.vel = Fly.vel:Lerp(target, math.min(dt * 8, 1))
-Fly.bv.Velocity = Fly.vel
-local look = Vector3.new(cf.LookVector.X, 0, cf.LookVector.Z)
-if look.Magnitude > 0 then
-local tilt = math.clamp(Fly.vel.Magnitude / math.max(S.flySpeed, 1), 0, 1) * .45
-Fly.bg.CFrame = CFrame.lookAt(root.Position, root.Position + look) * CFrame.Angles(-tilt, 0, 0)
-end
-end
-local FlyPanel = new("CanvasGroup", {
-AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, 160, .62, 0), Size = UDim2.fromOffset(132, 150),
-BackgroundColor3 = Color3.fromRGB(8, 8, 10), GroupTransparency = 1, Visible = false, ZIndex = 30,
-}, Gui)
-corner(FlyPanel, 14)
-new("UIStroke", { Color = WHITE, Transparency = .5, Thickness = 1.3 }, FlyPanel)
-new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 6), Size = UDim2.fromOffset(60, 22),
-Text = "FLY", Font = Enum.Font.GothamBlack, TextSize = 15, TextColor3 = WHITE, TextXAlignment = Enum.TextXAlignment.Left,
-}, FlyPanel)
-local FlyClose = new("TextButton", {
-Position = UDim2.new(1, -34, 0, 6), Size = UDim2.fromOffset(24, 22), BackgroundColor3 = T.card,
-Text = "X", Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = WHITE,
-}, FlyPanel)
-corner(FlyClose, 6)
-local function flyBtn(text, x, y, w, h)
-local b = new("TextButton", {
-Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(w, h), BackgroundColor3 = T.card,
-Text = text, Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = WHITE,
-}, FlyPanel)
-corner(b, 8)
-return b
-end
-local UpBtn   = flyBtn("ВВЕРХ", 10, 34, 112, 32)
-local DownBtn = flyBtn("ВНИЗ", 10, 70, 112, 32)
-local MinusBtn = flyBtn("-", 10, 108, 34, 32)
-local PlusBtn  = flyBtn("+", 88, 108, 34, 32)
-local SpeedLbl = new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(44, 108), Size = UDim2.fromOffset(44, 32),
-Text = tostring(S.flySpeed), Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = WHITE,
-}, FlyPanel)
-local function holdBtn(b, key)
-b.InputBegan:Connect(function(i)
-if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-Fly[key] = true
-tw(b, .1, { BackgroundColor3 = T.accent, TextColor3 = Color3.new(0, 0, 0) })
-end
-end)
-b.InputEnded:Connect(function(i)
-if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-Fly[key] = false
-tw(b, .15, { BackgroundColor3 = T.card, TextColor3 = T.text })
-end
-end)
-end
-holdBtn(UpBtn, "up"); holdBtn(DownBtn, "down")
-local function setFlySpeed(v)
-v = math.clamp(v, 10, 250)
-S.flySpeed = v
-SpeedLbl.Text = tostring(v)
-if Sliders.flySpeed then Sliders.flySpeed(v) end
-end
-MinusBtn.MouseButton1Click:Connect(function() setFlySpeed(S.flySpeed - 10) end)
-PlusBtn.MouseButton1Click:Connect(function() setFlySpeed(S.flySpeed + 10) end)
-FlyClose.MouseButton1Click:Connect(function() if Toggles.fly then Toggles.fly(false) end end)
-local function flyPanelShow(v)
-if v then
-FlyPanel.Visible = true
-tw(FlyPanel, .4, { Position = UDim2.new(1, -12, .62, 0), GroupTransparency = 0 }, Enum.EasingStyle.Back)
-else
-tw(FlyPanel, .25, { Position = UDim2.new(1, 160, .62, 0), GroupTransparency = 1 }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-task.delay(.27, function() if not S.fly then FlyPanel.Visible = false end end)
-end
-end
-local FpsLabel = new("TextLabel", {
-AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 0, 4), Size = UDim2.fromOffset(84, 22),
-BackgroundColor3 = Color3.fromRGB(8, 8, 10), BackgroundTransparency = .25, Text = "FPS --",
-Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = WHITE, Visible = false, ZIndex = 40,
-}, Gui)
-corner(FpsLabel, 8)
-new("UIStroke", { Color = WHITE, Transparency = .7, Thickness = 1 }, FpsLabel)
-local fpsAcc, fpsFrames = 0, 0
-local function fpsCounterStep(dt)
-FpsLabel.Visible = unlocked and S.showFps
-if not FpsLabel.Visible then fpsAcc, fpsFrames = 0, 0 return end
-fpsAcc = fpsAcc + dt; fpsFrames = fpsFrames + 1
-if fpsAcc >= .5 then
-local fps = math.floor(fpsFrames / fpsAcc + .5)
-FpsLabel.Text = "FPS " .. fps
-FpsLabel.TextColor3 = fps < 30 and Color3.fromRGB(255, 100, 110) or T.text
-fpsAcc, fpsFrames = 0, 0
-end
-end
-local revertFps, applyFps
-do
-local FpsLevels = { ["Выкл"] = 0, ["Простой"] = 1, ["Сильный"] = 2, ["Картошка"] = 3 }
-local FO = setmetatable({}, { __mode = "k" })
-local fpsToken, fpsConn = 0, nil
-local origRender = {}
-local function setp(inst, prop, val)
-local rec = FO[inst]
-if not rec then rec = {}; FO[inst] = rec end
-if rec[prop] == nil then
-local ok, cur = pcall(function() return inst[prop] end)
-if not ok then return end
-rec[prop] = cur
-end
-pcall(function() inst[prop] = val end)
-end
-local function skipInst(i)
-if i:IsDescendantOf(Gui) then return true end
-if i:FindFirstAncestor("CozyHalo") then return true end
-if string.sub(i.Name, 1, 6) == "CozyFX" then return true end
-return false
-end
-local function applyInst(inst, level)
-if skipInst(inst) then return end
-if inst:IsA("PostEffect") then
-setp(inst, "Enabled", false)
-elseif inst:IsA("BasePart") then
-if level >= 2 and not inst:IsA("Terrain") then
-setp(inst, "Material", Enum.Material.SmoothPlastic)
-setp(inst, "Reflectance", 0)
-setp(inst, "CastShadow", false)
-end
-if level >= 3 and inst:IsA("MeshPart") then
-setp(inst, "TextureID", "")
-setp(inst, "RenderFidelity", Enum.RenderFidelity.Performance)
-end
-elseif level >= 2 and (inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam")
-or inst:IsA("Fire") or inst:IsA("Smoke") or inst:IsA("Sparkles")) then
-setp(inst, "Enabled", false)
-elseif level >= 2 and inst:IsA("Light") then
-setp(inst, "Enabled", false)
-elseif level >= 3 and inst:IsA("Decal") then
-setp(inst, "Transparency", 1)
-elseif level >= 3 and inst:IsA("SpecialMesh") then
-setp(inst, "TextureId", "")
-elseif level >= 3 and inst:IsA("SurfaceAppearance") then
-setp(inst, "Parent", nil)
-end
-end
-function revertFps()
-fpsToken = fpsToken + 1
-if fpsConn then fpsConn:Disconnect(); fpsConn = nil end
-for inst, rec in pairs(FO) do
-for prop, val in pairs(rec) do
-pcall(function() inst[prop] = val end)
-end
-end
-FO = setmetatable({}, { __mode = "k" })
-pcall(function()
-local r = settings().Rendering
-if origRender.q ~= nil then r.QualityLevel = origRender.q end
-if origRender.m ~= nil then r.MeshPartDetailLevel = origRender.m end
-end)
-if origRender.tech and sethiddenproperty then
-pcall(function() sethiddenproperty(Lighting, "Technology", origRender.tech) end)
-end
-fpsLevel = 0
-end
-local function applyGlobals(level)
-setp(Lighting, "GlobalShadows", false)
-pcall(function()
-local r = settings().Rendering
-if origRender.q == nil then origRender.q = r.QualityLevel; origRender.m = r.MeshPartDetailLevel end
-r.QualityLevel = level == 1 and Enum.QualityLevel.Level05 or (level == 2 and Enum.QualityLevel.Level03 or Enum.QualityLevel.Level01)
-r.MeshPartDetailLevel = level >= 3 and Enum.MeshPartDetailLevel.Level04 or Enum.MeshPartDetailLevel.Level02
-end)
-pcall(function()
-local tr = workspace.Terrain
-setp(tr, "Decoration", false)
-setp(tr, "WaterWaveSize", 0)
-setp(tr, "WaterWaveSpeed", 0)
-setp(tr, "WaterReflectance", 0)
-end)
-if level >= 2 then
-setp(Lighting, "EnvironmentDiffuseScale", 0)
-setp(Lighting, "EnvironmentSpecularScale", 0)
-end
-if level >= 3 and sethiddenproperty and gethiddenproperty then
-pcall(function()
-if origRender.tech == nil then origRender.tech = gethiddenproperty(Lighting, "Technology") end
-sethiddenproperty(Lighting, "Technology", Enum.Technology.Legacy)
-end)
-end
-end
-function applyFps(name)
-local level = FpsLevels[name] or 0
-revertFps()
-if level == 0 then Notify("FPS буст выключен") return end
-fpsLevel = level
-local my = fpsToken
-Notify("FPS буст: " .. name .. " — применяю...")
-applyGlobals(level)
-fpsConn = workspace.DescendantAdded:Connect(function(d)
-if fpsLevel > 0 then pcall(applyInst, d, fpsLevel) end
-end)
-task.spawn(function()
-local n = 0
-local function pass(root)
-for _, d in ipairs(root:GetDescendants()) do
-if fpsToken ~= my then return end
-pcall(applyInst, d, level)
-n = n + 1
-if n % 400 == 0 then task.wait() end
-end
-end
-pass(workspace); pass(Lighting)
-if fpsToken == my then Notify("FPS буст применён: " .. name) end
-end)
-end
-end -- do (FPS boost)
-local function mkPart(parent, size, color, mat, transp)
-local p = Instance.new("Part")
-p.Size = size; p.Color = color or Color3.new(1, 1, 1); p.Material = mat or Enum.Material.SmoothPlastic
-p.Transparency = transp or 0
-p.CanCollide = false; p.CanQuery = false; p.CanTouch = false; p.Massless = true; p.CastShadow = false
-p.TopSurface = Enum.SurfaceType.Smooth; p.BottomSurface = Enum.SurfaceType.Smooth
-p.Parent = parent
-return p
-end
-local function mkWeld(p0, p1, c0)
-local w = Instance.new("Weld")
-w.Part0, w.Part1, w.C0 = p0, p1, c0
-w.Parent = p1
-return w
-end
-local Halo = {}
-function Halo.clear() if Halo.model then Halo.model:Destroy() end Halo.model, Halo.weld = nil, nil end
-function Halo.build()
-Halo.clear()
-local char = LP.Character
-local head = char and char:FindFirstChild("Head")
-if not head then return end
-local model = Instance.new("Model"); model.Name = "CozyHalo"
-local hub = mkPart(model, Vector3.new(.2, .2, .2), nil, nil, 1)
-Halo.weld = mkWeld(head, hub, CFrame.new(0, 1.1, 0))
-local n, r = 16, .75
-for kk = 0, n - 1 do
-local th = kk / n * math.pi * 2
-local seg = mkPart(model, Vector3.new(.5, .09, .09), Color3.fromRGB(255, 240, 200), Enum.Material.Neon)
-mkWeld(hub, seg, CFrame.new(math.cos(th) * r, 0, math.sin(th) * r) * CFrame.Angles(0, -(th + math.pi / 2), 0))
-end
-model.Parent = char
-Halo.model = model
-end
-function Halo.update()
-if Halo.weld and Halo.weld.Parent then
-local t = os.clock()
-Halo.weld.C0 = CFrame.new(0, 1.1 + math.sin(t * 2) * .08, 0) * CFrame.Angles(0, t * 1.5, 0)
-end
-end
-local TrailObj
-local function setTrail(on)
-if TrailObj then TrailObj:Destroy() TrailObj = nil end
-local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-if on and root then
-local a0 = new("Attachment", { Name = "CozyA0", Position = Vector3.new(0, 1, 0) }, root)
-local a1 = new("Attachment", { Name = "CozyA1", Position = Vector3.new(0, -1, 0) }, root)
-TrailObj = new("Trail", {
-Attachment0 = a0, Attachment1 = a1, Lifetime = .8, LightEmission = 1, FaceCamera = true,
-Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(120, 120, 130)),
-Transparency = NumberSequence.new({ NSK(0, .2), NSK(1, 1) }),
-}, root)
-TrailObj.Destroying:Connect(function() a0:Destroy(); a1:Destroy() end)
-end
-end
-local GlowHL
-local function setGlow(on)
-if GlowHL then GlowHL:Destroy() GlowHL = nil end
-if on and LP.Character then
-GlowHL = new("Highlight", { Name = "CozySelf", FillTransparency = .7, OutlineTransparency = 0, DepthMode = Enum.HighlightDepthMode.Occluded }, LP.Character)
-end
-end
-local origLight = {
-Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime, FogEnd = Lighting.FogEnd, FogStart = Lighting.FogStart,
-GlobalShadows = Lighting.GlobalShadows, Ambient = Lighting.Ambient, OutdoorAmbient = Lighting.OutdoorAmbient,
-}
-local origFov = Camera.FieldOfView
-local origAtmo = {}
-for _, v in ipairs(Lighting:GetChildren()) do
-if v:IsA("Atmosphere") then origAtmo[v] = v.Density end
-end
-local function restoreLight()
-if not S.fullbright and not Shaders.active then
-Lighting.Brightness, Lighting.ClockTime = origLight.Brightness, origLight.ClockTime
-Lighting.GlobalShadows = (fpsLevel > 0) and false or origLight.GlobalShadows
-Lighting.Ambient, Lighting.OutdoorAmbient = origLight.Ambient, origLight.OutdoorAmbient
-end
-if not S.nofog then
-Lighting.FogEnd, Lighting.FogStart = origLight.FogEnd, origLight.FogStart
-for a, dd in pairs(origAtmo) do if a.Parent then a.Density = dd end end
-end
-end
-local function lightStep()
-if S.fullbright then
-Lighting.Brightness = 2; Lighting.ClockTime = 14; Lighting.GlobalShadows = false
-Lighting.Ambient = Color3.fromRGB(190, 190, 190); Lighting.OutdoorAmbient = Color3.fromRGB(190, 190, 190)
-end
-if S.nofog then
-Lighting.FogEnd = 1e6; Lighting.FogStart = 1e6
-for a in pairs(origAtmo) do if a.Parent then a.Density = 0 end end
-end
-if S.fov then Camera.FieldOfView = S.fovVal end
-end
-local function rebuildVisuals()
-if S.halo then pcall(Halo.build) else Halo.clear() end
-setTrail(S.trail)
-setGlow(S.selfGlow)
-end
-conn(LP.CharacterAdded, function(char)
-char:WaitForChild("HumanoidRootPart", 10)
-char:WaitForChild("Head", 10)
-task.wait(.4)
-rebuildVisuals()
-end)
-do
-local LIGHT_PROPS = {
-"Brightness", "ClockTime", "Ambient", "OutdoorAmbient", "ColorShift_Top", "ColorShift_Bottom",
-"ExposureCompensation", "EnvironmentDiffuseScale", "EnvironmentSpecularScale", "GlobalShadows",
-"FogColor", "FogStart", "FogEnd", "ShadowSoftness",
-}
-local ATMO_PROPS = { "Density", "Offset", "Color", "Decay", "Glare", "Haze" }
-local NEUTRAL = {
-cc    = { Brightness = 0, Contrast = 0, Saturation = 0, TintColor = Color3.new(1, 1, 1) },
-bloom = { Intensity = 0, Size = 24, Threshold = 2 },
-sun   = { Intensity = 0, Spread = .3 },
-dof   = { FarIntensity = 0, NearIntensity = 0, FocusDistance = 0, InFocusRadius = 10 },
-}
-local FX_CLASS = { cc = "ColorCorrectionEffect", bloom = "BloomEffect", sun = "SunRaysEffect", dof = "DepthOfFieldEffect" }
-local RGB = Color3.fromRGB
-local ShaderPresets = {
-["Реалистичный"] = {
-light = { Brightness = 2.6, ExposureCompensation = .15, Ambient = RGB(70, 72, 80), OutdoorAmbient = RGB(120, 125, 135),
-ColorShift_Top = RGB(255, 236, 205), ColorShift_Bottom = RGB(60, 70, 90),
-EnvironmentDiffuseScale = 1, EnvironmentSpecularScale = 1, GlobalShadows = true, ShadowSoftness = .25 },
-cc = { Brightness = .02, Contrast = .12, Saturation = .18, TintColor = RGB(255, 248, 240) },
-bloom = { Intensity = .35, Size = 28, Threshold = 1.6 },
-sun = { Intensity = .18, Spread = .7 },
-dof = { FarIntensity = .12, NearIntensity = 0, FocusDistance = 55, InFocusRadius = 45 },
-atmo = { Density = .3, Offset = .2, Color = RGB(199, 215, 235), Decay = RGB(130, 150, 175), Glare = .25, Haze = 1.1 },
-vig = .3, vigColor = RGB(0, 0, 0), tech = "Future",
-},
-["Кибер-панк"] = {
-light = { Brightness = 1.4, ClockTime = 22, ExposureCompensation = .1, Ambient = RGB(48, 14, 82), OutdoorAmbient = RGB(88, 26, 140),
-ColorShift_Top = RGB(255, 40, 190), ColorShift_Bottom = RGB(0, 200, 255),
-EnvironmentDiffuseScale = 1, EnvironmentSpecularScale = 1, FogColor = RGB(40, 10, 70), ShadowSoftness = .15 },
-cc = { Brightness = .02, Contrast = .3, Saturation = .55, TintColor = RGB(255, 215, 255) },
-bloom = { Intensity = 1.1, Size = 42, Threshold = .85 },
-sun = { Intensity = .08, Spread = 1 },
-dof = { FarIntensity = .2, NearIntensity = 0, FocusDistance = 60, InFocusRadius = 55 },
-atmo = { Density = .38, Offset = .1, Color = RGB(150, 60, 210), Decay = RGB(40, 10, 90), Glare = .6, Haze = 1.8 },
-vig = .55, vigColor = RGB(10, 0, 25), pulse = RGB(190, 255, 255),
-},
-["Закат"] = {
-light = { Brightness = 2.2, ClockTime = 17.7, ExposureCompensation = .1, Ambient = RGB(95, 70, 70), OutdoorAmbient = RGB(160, 105, 90),
-ColorShift_Top = RGB(255, 150, 70), ColorShift_Bottom = RGB(120, 70, 110),
-EnvironmentDiffuseScale = 1, EnvironmentSpecularScale = 1, ShadowSoftness = .3 },
-cc = { Brightness = .01, Contrast = .15, Saturation = .3, TintColor = RGB(255, 225, 200) },
-bloom = { Intensity = .55, Size = 32, Threshold = 1.2 },
-sun = { Intensity = .35, Spread = .85 },
-dof = { FarIntensity = .08, NearIntensity = 0, FocusDistance = 60, InFocusRadius = 50 },
-atmo = { Density = .36, Offset = .25, Color = RGB(255, 180, 130), Decay = RGB(190, 90, 70), Glare = .8, Haze = 1.6 },
-vig = .35, vigColor = RGB(30, 5, 0),
-},
-["Холодный"] = {
-light = { Brightness = 2, ExposureCompensation = .05, Ambient = RGB(60, 75, 95), OutdoorAmbient = RGB(100, 125, 155),
-ColorShift_Top = RGB(170, 205, 255), ColorShift_Bottom = RGB(40, 60, 90),
-EnvironmentDiffuseScale = 1, EnvironmentSpecularScale = 1, ShadowSoftness = .3 },
-cc = { Brightness = 0, Contrast = .18, Saturation = -.05, TintColor = RGB(215, 232, 255) },
-bloom = { Intensity = .3, Size = 26, Threshold = 1.5 },
-sun = { Intensity = .1, Spread = .6 },
-dof = { FarIntensity = .1, NearIntensity = 0, FocusDistance = 55, InFocusRadius = 45 },
-atmo = { Density = .42, Offset = .1, Color = RGB(190, 210, 235), Decay = RGB(100, 125, 160), Glare = .1, Haze = 2.2 },
-vig = .4, vigColor = RGB(0, 0, 0),
-},
-}
-local ShaderNames = { "Выкл", "Реалистичный", "Кибер-панк", "Закат", "Холодный" }
-Shaders.names = ShaderNames
-local function mixv(a, b, k)
-local t = typeof(b)
-if t == "number" then return a + (b - a) * k end
-if t == "Color3" then return a:Lerp(b, k) end
-if k > .5 then return b end
-return a
-end
-local function tweenProps(inst, props, t)
-for k, v in pairs(props) do
-pcall(function()
-local tv = typeof(v)
-if t > 0 and (tv == "number" or tv == "Color3") then
-TweenService:Create(inst, TweenInfo.new(t, Enum.EasingStyle.Sine), { [k] = v }):Play()
-else
-inst[k] = v
-end
-end)
-end
-end
-function Shaders.save()
-if Shaders.saved then return end
-local sv = { light = {} }
-for _, p in ipairs(LIGHT_PROPS) do
-local ok, v = pcall(function() return Lighting[p] end)
-if ok then sv.light[p] = v end
-end
-for _, a in ipairs(Lighting:GetChildren()) do
-if a:IsA("Atmosphere") and string.sub(a.Name, 1, 6) ~= "CozyFX" then
-sv.atmo = { inst = a, vals = {} }
-for _, p in ipairs(ATMO_PROPS) do sv.atmo.vals[p] = a[p] end
-break
-end
-end
-if gethiddenproperty then pcall(function() sv.tech = gethiddenproperty(Lighting, "Technology") end) end
-Shaders.saved = sv
-end
-local function getFx(key)
-local e = Shaders.fx[key]
-if e and e.Parent then return e end
-e = Instance.new(FX_CLASS[key])
-e.Name = "CozyFX_" .. key
-for k, v in pairs(NEUTRAL[key]) do pcall(function() e[k] = v end) end
-e.Parent = Lighting
-Shaders.fx[key] = e
-return e
-end
-local function getAtmo()
-local sv = Shaders.saved
-if sv.atmo and sv.atmo.inst.Parent then return sv.atmo.inst, sv.atmo.vals end
-local a = Shaders.fx.atmo
-if not a or not a.Parent then
-a = Instance.new("Atmosphere")
-a.Name = "CozyFX_atmo"
-a.Density = 0; a.Offset = 0; a.Glare = 0; a.Haze = 0
-a.Parent = Lighting
-Shaders.fx.atmo = a
-end
-return a, { Density = 0, Offset = 0, Color = a.Color, Decay = a.Decay, Glare = 0, Haze = 0 }
-end
-function Shaders.vignette(a, color)
-if a <= .01 then
-VigLayer.Visible = false
-return
-end
-VigLayer.Visible = true
-for i, f in ipairs(VigFrames) do
-f.BackgroundColor3 = color or BLACK
-VigGrads[i].Transparency = NumberSequence.new({ NSK(0, 1 - math.clamp(a, 0, .95)), NSK(1, 1) })
-end
-end
-function Shaders.apply(name)
-local p = ShaderPresets[name]
-if not p then return Shaders.reset() end
-Shaders.save()
-Shaders.active = name
-Shaders.t0 = os.clock()
-local k = S.shaderInt / 100
-local TT = 1.1
-local props = {}
-for prop, target in pairs(p.light) do
-local base = Shaders.saved.light[prop]
-if base ~= nil then props[prop] = mixv(base, target, k) end
-end
-tweenProps(Lighting, props, TT)
-for key in pairs(FX_CLASS) do
-local target = p[key]
-if target then
-local e = getFx(key)
-local pr = {}
-for prop, v in pairs(target) do pr[prop] = mixv(NEUTRAL[key][prop], v, k) end
-tweenProps(e, pr, TT)
-elseif Shaders.fx[key] and Shaders.fx[key].Parent then
-tweenProps(Shaders.fx[key], NEUTRAL[key], TT)
-end
-end
-if p.atmo then
-local a, vals = getAtmo()
-local pr = {}
-for prop, v in pairs(p.atmo) do pr[prop] = mixv(vals[prop], v, k) end
-tweenProps(a, pr, TT)
-end
-Shaders.vignette((p.vig or 0) * k, p.vigColor)
-if sethiddenproperty then
-local tgt = (p.tech and k > .5) and Enum.Technology[p.tech] or Shaders.saved.tech
-if tgt then pcall(function() sethiddenproperty(Lighting, "Technology", tgt) end) end
-end
-end
-function Shaders.reset(instant)
-local sv = Shaders.saved
-Shaders.active = nil
-VigLayer.Visible = false
-if not sv then return end
-local TT = instant and 0 or .9
-tweenProps(Lighting, sv.light, TT)
-if sv.atmo and sv.atmo.inst.Parent then tweenProps(sv.atmo.inst, sv.atmo.vals, TT) end
-for key, e in pairs(Shaders.fx) do
-if e and e.Parent then
-if key == "atmo" then tweenProps(e, { Density = 0, Haze = 0, Glare = 0, Offset = 0 }, TT)
-else tweenProps(e, NEUTRAL[key], TT) end
-if instant then
-e:Destroy()
-else
-task.delay(TT + .1, function() if e.Parent and not Shaders.active then e:Destroy() end end)
-end
-end
-end
-if sv.tech and sethiddenproperty then pcall(function() sethiddenproperty(Lighting, "Technology", sv.tech) end) end
-if instant then
-Shaders.fx, Shaders.saved = {}, nil
-else
-task.delay(TT + .15, function() if not Shaders.active then Shaders.saved = nil end end)
-end
-end
-function Shaders.step()
-local p = Shaders.active and ShaderPresets[Shaders.active]
-if not p or not p.pulse then return end
-local el = os.clock() - Shaders.t0 - 1.5
-if el < 0 then return end
-local cc = Shaders.fx.cc
-if not (cc and cc.Parent) then return end
-local k = S.shaderInt / 100
-local base = Color3.new(1, 1, 1):Lerp(p.cc.TintColor, k)
-local alt = Color3.new(1, 1, 1):Lerp(p.pulse, k)
-cc.TintColor = base:Lerp(alt, (1 - math.cos(el * .7)) / 2)
-end
-Shaders.token = 0
-local function applyShaderPreset(name)
-if name == "Выкл" then
-Shaders.reset()
-Notify("Шейдеры выключены")
-else
-Shaders.apply(name)
-Notify("Шейдер: " .. name)
-end
-end
-Shaders.applyPreset = applyShaderPreset
-end -- do (шейдеры)
-local FS = { root = "CozyHub" }
-FS.ok = type(writefile) == "function" and type(readfile) == "function" and type(isfile) == "function"
-FS.mem = (getgenv and getgenv().CozyHubMem) or {}
-if getgenv then getgenv().CozyHubMem = FS.mem end
-local function fsFolder(path)
-if type(isfolder) == "function" and type(makefolder) == "function" then
-pcall(function() if not isfolder(path) then makefolder(path) end end)
-end
-end
-function FS.init()
-fsFolder(FS.root); fsFolder(FS.root .. "/configs"); fsFolder(FS.root .. "/music")
-end
-function FS.write(rel, data)
-if FS.ok then
-local ok = pcall(writefile, FS.root .. "/" .. rel, data)
-if ok then FS.mem[rel] = nil return true end
-end
-FS.mem[rel] = data
-return false
-end
-function FS.read(rel)
-if FS.ok then
-local ok, d = pcall(function()
-local p = FS.root .. "/" .. rel
-if isfile(p) then return readfile(p) end
-end)
-if ok and d then return d end
-end
-return FS.mem[rel]
-end
-function FS.delete(rel)
-if FS.ok and type(delfile) == "function" then
-pcall(function()
-local p = FS.root .. "/" .. rel
-if isfile(p) then delfile(p) end
-end)
-end
-FS.mem[rel] = nil
-end
-function FS.list(dirRel)
-local out, seen = {}, {}
-if FS.ok and type(listfiles) == "function" then
-pcall(function()
-for _, p in ipairs(listfiles(FS.root .. "/" .. dirRel)) do
-local name = string.match(p, "([^/\\]+)$")
-if name and not seen[name] then seen[name] = true; table.insert(out, name) end
-end
-end)
-end
-for rel in pairs(FS.mem) do
-local d, name = string.match(rel, "^(.-)/([^/]+)$")
-if d == dirRel and not seen[name] then seen[name] = true; table.insert(out, name) end
-end
-table.sort(out)
-return out
-end
-FS.init()
-local HB = setmetatable({}, { __mode = "k" })
-local HB_HEAD_COL, HB_BODY_COL = Color3.fromRGB(255, 80, 110), Color3.fromRGB(90, 200, 255)
-local function hbRestoreOne(part, rec)
-if rec.sel then pcall(function() rec.sel:Destroy() end) end
-if part and part.Parent then
-pcall(function()
-part.Size = rec.size; part.Transparency = rec.trans; part.CanCollide = rec.cc; part.Massless = rec.ml
-end)
-end
-end
-local function hitboxRestore()
-for part, rec in pairs(HB) do hbRestoreOne(part, rec); HB[part] = nil end
-end
-local function hbApply(part, size, transPct, hl, color)
-local rec = HB[part]
-if not rec then
-rec = { size = part.Size, trans = part.Transparency, cc = part.CanCollide, ml = part.Massless }
-HB[part] = rec
-end
-local want = Vector3.new(size, size, size)
-if part.Size ~= want then part.Size = want end
-local tt = math.max(rec.trans, transPct / 100)
-if part.Transparency ~= tt then part.Transparency = tt end
-if part.CanCollide then part.CanCollide = false end
-if not part.Massless then part.Massless = true end
-if hl then
-if not rec.sel or rec.sel.Parent == nil then
-local sb = Instance.new("SelectionBox")
-sb.Name = "CozyFX_hb"
-sb.LineThickness = .04
-sb.SurfaceTransparency = .82
-sb.Adornee = part
-sb.Parent = part
-rec.sel = sb
-end
-rec.sel.Color3 = color
-rec.sel.SurfaceColor3 = color
-elseif rec.sel then
-rec.sel:Destroy()
-rec.sel = nil
-end
-end
-local function hitboxStep()
-if not (S.hitbox or S.bodyHitbox) then
-if next(HB) then hitboxRestore() end
-return
-end
-for _, plr in ipairs(Players:GetPlayers()) do
-if plr ~= LP then
-local char = plr.Character
-local skip = S.hitboxTeam and not isEnemy(plr)
-local head = char and char:FindFirstChild("Head")
-local root = char and char:FindFirstChild("HumanoidRootPart")
-if head and head:IsA("BasePart") then
-if S.hitbox and not skip then
-hbApply(head, S.hitboxSize, S.hitboxTrans, S.hitboxHl, HB_HEAD_COL)
-elseif HB[head] then
-hbRestoreOne(head, HB[head]); HB[head] = nil
-end
-end
-if root and root:IsA("BasePart") then
-if S.bodyHitbox and not skip then
-hbApply(root, S.bodySize, S.bodyTrans, S.bodyHl, HB_BODY_COL)
-elseif HB[root] then
-hbRestoreOne(root, HB[root]); HB[root] = nil
-end
-end
-end
-end
-end
-local MUSIC_GREEN = Color3.fromRGB(30, 215, 96)
-local Music = { tracks = {}, idx = nil, playing = false, token = 0, filter = "Все", search = "", shuffle = false, repeatMode = "Выкл", lastSec = -1, status = "" }
-local SH = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-"
-local DefaultTracks = {
-{ n = "Nuts", a = "Lil Peep", s = "5918828037;5678130547", f = true },
-{ n = "SoundHelix Song 1", a = "SoundHelix", s = SH .. "1.mp3", f = false },
-{ n = "SoundHelix Song 2", a = "SoundHelix", s = SH .. "2.mp3", f = false },
-{ n = "SoundHelix Song 3", a = "SoundHelix", s = SH .. "3.mp3", f = false },
-{ n = "SoundHelix Song 5", a = "SoundHelix", s = SH .. "5.mp3", f = false },
-{ n = "SoundHelix Song 8", a = "SoundHelix", s = SH .. "8.mp3", f = false },
-}
-local Snd = Instance.new("Sound")
-Snd.Name = "CozyHubMusic"; Snd.Volume = S.musicVol / 100; Snd.Looped = false
-Snd.Parent = SoundService
-function Music.save()
-FS.write("music.json", HttpService:JSONEncode({ v = 2, tracks = Music.tracks }))
-end
-local function loadDefaults()
-for _, t in ipairs(DefaultTracks) do table.insert(Music.tracks, { n = t.n, a = t.a, s = t.s, f = t.f }) end
-end
-function Music.load()
-local raw = FS.read("music.json")
-local ok, data = false, nil
-if raw then ok, data = pcall(function() return HttpService:JSONDecode(raw) end) end
-if ok and type(data) == "table" and type(data.tracks) == "table" and #data.tracks > 0 then
-if (data.v or 1) < 2 then
-local old = { ["Nuts"] = 1, ["Sneaky Snitch"] = 1, ["Monkeys Spinning Monkeys"] = 1, ["Carefree"] = 1, ["Fluffing a Duck"] = 1, ["Wallpaper"] = 1 }
-loadDefaults()
-for _, t in ipairs(data.tracks) do
-if not old[t.n] then table.insert(Music.tracks, t) end
-end
-Music.save()
-else
-Music.tracks = data.tracks
-end
-else
-loadDefaults()
-end
-end
-pcall(Music.load)
-if #Music.tracks == 0 then loadDefaults() end
-local function fmtTime(sec)
-sec = math.max(0, math.floor(sec or 0))
-return string.format("%d:%02d", math.floor(sec / 60), sec % 60)
-end
-local function strHash(str)
-local h = 5381
-for i = 1, #str do h = (h * 33 + string.byte(str, i)) % 4294967296 end
-return string.format("%08x", h)
-end
-local function tryReq(req, url)
-if not req then return nil end
-local ok, res = pcall(req, { Url = url, Method = "GET" })
-if ok and res and res.Body and #res.Body > 10000 and (res.StatusCode == nil or res.StatusCode == 200) then
-return res.Body
-end
-end
-local function httpGet(url)
-local body = tryReq(syn and syn.request, url) or tryReq(request, url) or tryReq(http_request, url)
-or tryReq(http and http.request, url) or tryReq(fluxus and fluxus.request, url)
-if body then return body end
-local ok, b = pcall(function() return game:HttpGet(url) end)
-if ok and b and #b > 10000 then return b end
-end
-local function resolveOne(s)
-if s:match("^%d+$") then return "rbxassetid://" .. s end
-if s:match("^rbxasset") then return s end
-if s:match("^https?://") then
-local getAsset = getcustomasset or getsynasset
-if not getAsset or not FS.ok then return nil, "Эксплойт не умеет writefile / getcustomasset: ссылки не работают, используй ID" end
-local path = FS.root .. "/music/" .. strHash(s) .. ".mp3"
-local have = false
-pcall(function() have = isfile(path) end)
-for attempt = 1, 2 do
-if not have then
-local body = httpGet(s)
-if not body then return nil, "Не удалось скачать трек по ссылке" end
-if not pcall(writefile, path, body) then return nil, "Не удалось сохранить файл" end
-end
-local ok, asset = pcall(getAsset, path)
-if ok and asset then return asset end
-have = false
-end
-return nil, "getcustomasset не сработал"
-end
-return nil, "Источник: ID Roblox или ссылка на .mp3"
-end
-function Music.visible()
-local out = {}
-local q = string.lower(Music.search or "")
-for i, t in ipairs(Music.tracks) do
-local hay = string.lower((t.n or "") .. " " .. (t.a or ""))
-if (Music.filter == "Все" or t.f) and (q == "" or string.find(hay, q, 1, true)) then
-table.insert(out, i)
-end
-end
-return out
-end
-function Music.refresh()
-local ui = Music.ui
-if ui then
-local t = Music.idx and Music.tracks[Music.idx]
-ui.title.Text = t and t.n or "Выбери трек"
-ui.artist.Text = t and ((t.a and t.a ~= "") and t.a or "—") or "Плеер Cozy Hub"
-ui.status.Text = Music.status or ""
-ui.play.Text = Music.playing and "❚❚" or "▶"
-end
-if Music.rebuild then Music.rebuild() end
-end
-function Music.play(i)
-local t = Music.tracks[i]
-if not t then return end
-Music.idx = i
-Music.token = Music.token + 1
-local my = Music.token
-Music.status = "Загрузка..."
-Music.playing = false
-pcall(function() Snd:Stop() end)
-Music.refresh()
-task.spawn(function()
-local cands = {}
-for part in string.gmatch(tostring(t.s or ""), "[^;%s]+") do table.insert(cands, part) end
-if #cands == 0 then
-Music.status = "Нет источника"
-Music.refresh()
-Notify("У трека нет источника: нажми ✎ и вставь ID или ссылку")
-return
-end
-local lastErr = "Не удалось воспроизвести"
-local okPlay = false
-for _, cand in ipairs(cands) do
-local url, err = resolveOne(cand)
-if my ~= Music.token then return end
-if url then
-Snd.SoundId = url
-Snd.TimePosition = 0
-Snd:Play()
-local t0 = os.clock()
-while not (Snd.IsLoaded or Snd.TimeLength > 0) and os.clock() - t0 < 12 and my == Music.token do task.wait(.1) end
-if my ~= Music.token then return end
-if Snd.IsLoaded or Snd.TimeLength > 0 then okPlay = true break end
-Snd:Stop()
-lastErr = "Roblox не загрузил аудио (ID закрыт или удалён). Вставь другой ID через ✎"
-else
-lastErr = err or lastErr
-end
-end
-if not okPlay then
-Music.status = "Не загрузилось"
-Music.refresh()
-Notify(lastErr)
-return
-end
-Music.playing = true
-Music.status = ""
-Music.lastSec = -1
-Music.refresh()
-end)
-end
-function Music.nextIdx(dir)
-local vis = Music.visible()
-if #vis == 0 then return nil end
-if Music.shuffle and #vis > 1 then
-local pick
-repeat pick = vis[math.random(#vis)] until pick ~= Music.idx
-return pick
-end
-local pos = table.find(vis, Music.idx)
-if not pos then return vis[1] end
-local np = pos + dir
-if np > #vis then np = 1 elseif np < 1 then np = #vis end
-return vis[np]
-end
-function Music.toggle()
-if not Music.idx then
-local vis = Music.visible()
-if vis[1] then Music.play(vis[1]) end
-return
-end
-if Music.playing then
-Snd:Pause(); Music.playing = false
-else
-if Snd.IsPaused then Snd:Resume() else Snd:Play() end
-Music.playing = true
-end
-Music.refresh()
-end
-conn(Snd.Ended, function()
-if not Music.idx then return end
-if Music.repeatMode == "Один" then Music.play(Music.idx) return end
-local vis = Music.visible()
-local pos = table.find(vis, Music.idx)
-if Music.repeatMode == "Выкл" and not Music.shuffle and pos == #vis then
-Music.playing = false
-Music.refresh()
-return
-end
-local n = Music.nextIdx(1)
-if n then Music.play(n) end
-end)
-function Music.step()
-local ui = Music.ui
-if not ui then return end
-if Music.playing then ui.coverGrad.Rotation = (os.clock() * 40) % 360 end
-local len = Snd.TimeLength
-if Music.idx and len and len > 0 then
-local pos = Snd.TimePosition
-ui.fill.Size = UDim2.fromScale(math.clamp(pos / len, 0, 1), 1)
-local cs = math.floor(pos)
-if cs ~= Music.lastSec then
-Music.lastSec = cs
-ui.cur.Text = fmtTime(pos)
-ui.dur.Text = fmtTime(len)
-end
-end
-end
-local Target = { cur = nil, active = false, hudOn = false, hpFill = 1 }
-do
-local TAU = math.pi * 2
-local Layer = new("Folder", { Name = "Target" }, ESPLayer)
-local dots, lines = {}, {}
-local usedD, usedL = 0, 0
-local P = { inv = CFrame.new(), vp = Vector2.new(1, 1), sc = 1 }
-local TGT_COLORS = {
-["Красный"] = Color3.fromRGB(255, 70, 90), ["Белый"] = Color3.fromRGB(255, 255, 255),
-["Голубой"] = Color3.fromRGB(90, 210, 255), ["Розовый"] = Color3.fromRGB(255, 110, 200),
-["Зелёный"] = Color3.fromRGB(90, 255, 140), ["Золотой"] = Color3.fromRGB(255, 205, 70),
-}
-local function colAt(j)
-local m = S.tgtColor
-if m == "Радуга" then return Color3.fromHSV((os.clock() * .25 + j * .03) % 1, .75, 1) end
-return TGT_COLORS[m] or T.accent
-end
-local function getDot(i)
-local d = dots[i]
-if not d then
-d = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Visible = false, Size = UDim2.fromOffset(6, 6) }, Layer)
-corner(d, 14)
-dots[i] = d
-end
-return d
-end
-local function getLine(i)
-local l = lines[i]
-if not l then
-l = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Visible = false }, Layer)
-lines[i] = l
-end
-return l
-end
-local function proj(wp)
-local cp = P.inv * wp
-local depth = -cp.Z
-if depth < .1 then return nil end
-return Vector2.new(P.vp.X / 2 + cp.X / depth * P.sc, P.vp.Y / 2 - cp.Y / depth * P.sc), depth
-end
-local function dot(wp, size, tr, col)
-if usedD >= 40 then return end
-usedD = usedD + 1
-local d = getDot(usedD)
-local p, depth = proj(wp)
-if p then
-local sz = math.clamp(size * P.sc / depth, 2, 30)
-d.Size = UDim2.fromOffset(sz, sz)
-d.Position = UDim2.fromOffset(p.X, p.Y)
-d.BackgroundColor3 = col
-d.BackgroundTransparency = tr
-d.Visible = true
-else
-d.Visible = false
-end
-end
-local function seg2(a, b, th, col, tr)
-if usedL >= 40 then return end
-usedL = usedL + 1
-local l = getLine(usedL)
-local d = b - a
-l.Visible = true
-l.BackgroundColor3 = col
-l.BackgroundTransparency = tr or 0
-l.Size = UDim2.fromOffset(d.Magnitude + 1, th)
-l.Position = UDim2.fromOffset((a.X + b.X) / 2, (a.Y + b.Y) / 2)
-l.Rotation = math.deg(math.atan2(d.Y, d.X))
-end
-local function seg3(a, b, th, col, tr)
-local pa, pb = proj(a), proj(b)
-if pa and pb then seg2(pa, pb, th, col, tr) end
-end
-local function nz(a, b)
-local x = math.sin(a * 12.9898 + b * 78.233) * 43758.5453
-return x - math.floor(x)
-end
-local function hideEffects()
-for i = 1, #dots do dots[i].Visible = false end
-for i = 1, #lines do lines[i].Visible = false end
-end
-local function draw(style, cf, size, char)
-local c = cf.Position
-local H = size.Y
-local sz = S.tgtSize / 100
-local R = (math.max(size.X, size.Z) / 2 + 1.3) * sz
-local t = os.clock() * (S.tgtSpeed / 100)
-local cos, sin = math.cos, math.sin
-local function level(k) return c.Y - H / 2 + (sin(t * 1.8 + k) * .5 + .5) * H end
-if style == "Кольцо" then
-local y = level(0)
-for j = 0, 23 do
-local a = j / 24 * TAU + t * 2
-dot(Vector3.new(c.X + cos(a) * R, y, c.Z + sin(a) * R), .34 * sz, .15 + .55 * (sin(a * 2 - t * 3) * .5 + .5), colAt(j))
-end
-elseif style == "Двойное кольцо" then
-for k = 0, 1 do
-local y = level(k * math.pi)
-local r = R * (k == 0 and 1 or .82)
-for j = 0, 15 do
-local a = j / 16 * TAU + t * (k == 0 and 2 or -2)
-dot(Vector3.new(c.X + cos(a) * r, y, c.Z + sin(a) * r), .3 * sz, .1 + .5 * (sin(a * 2 - t * 3) * .5 + .5), colAt(j + k * 16))
-end
-end
-elseif style == "Спираль" then
-for j = 0, 27 do
-local a = t * 2.5 + j * .5
-dot(Vector3.new(c.X + cos(a) * R, c.Y - H / 2 + j / 27 * H, c.Z + sin(a) * R), .32 * sz, j / 27 * .7, colAt(j))
-end
-elseif style == "Призраки" then
-for i = 0, 2 do
-for k = 0, 5 do
-local tt = t - k * .07
-local a = tt * (1.5 + i * .35) + i * 2.1
-local r = R * (1 + i * .15)
-local h = sin(tt * 1.7 + i * 1.3) * H * .3
-dot(Vector3.new(c.X + cos(a) * r, c.Y + h, c.Z + sin(a) * r), .95 * sz * (1 - k / 8), .05 + k / 6 * .85, colAt(i * 6 + k))
-end
-end
-elseif style == "Орбиты" then
-for k = 0, 2 do
-local rot = CFrame.Angles(k * 1.05 + .4, t * (1 + k * .35), k * .7)
-for j = 0, 11 do
-local a = j / 12 * TAU
-dot(c + rot * Vector3.new(cos(a) * R * 1.05, 0, sin(a) * R * 1.05), .26 * sz, j / 12 * .6, colAt(j + k * 12))
-end
-end
-elseif style == "Пульс" then
-for k = 0, 1 do
-local p = (t * .7 + k * .5) % 1
-local r = R * .5 + R * 1.7 * p
-for j = 0, 19 do
-local a = j / 20 * TAU
-dot(Vector3.new(c.X + cos(a) * r, c.Y - H / 2 + .25, c.Z + sin(a) * r), .3 * sz * (1 - p * .4), .1 + .85 * p, colAt(j))
-end
-end
-elseif style == "Торнадо" then
-for j = 0, 29 do
-local l = j / 29
-local a = t * 3 + j * .9
-local r = R * (.4 + 1.1 * l)
-dot(Vector3.new(c.X + cos(a) * r, c.Y - H / 2 + l * H * 1.3, c.Z + sin(a) * r), .3 * sz, l * .6, colAt(j))
-end
-elseif style == "Звёзды" then
-for j = 1, 16 do
-local a = nz(j, 1) * TAU + t * .5
-local r = R * (.5 + nz(j, 2) * .9)
-local y = c.Y - H / 2 + ((t * .35 + nz(j, 3)) % 1) * H * 1.2
-local tw2 = sin(t * 4 + j) * .5 + .5
-dot(Vector3.new(c.X + cos(a) * r, y, c.Z + sin(a) * r), (.1 + .3 * tw2) * sz, .1 + .5 * (1 - tw2), colAt(j))
-end
-elseif style == "Нимб" then
-local y = c.Y + H / 2 + .9 * sz + sin(t * 2) * .1
-for j = 0, 17 do
-local a = j / 18 * TAU + t * 2
-dot(Vector3.new(c.X + cos(a) * .85 * sz, y, c.Z + sin(a) * .85 * sz), .26 * sz, .05, colAt(j))
-end
-elseif style == "Квадрат" then
-for k = 0, 1 do
-local y = level(-k * .6)
-local pts = {}
-for m = 0, 3 do
-local a = t * 1.2 + math.pi / 4 + m * math.pi / 2
-pts[m] = Vector3.new(c.X + cos(a) * R * 1.2, y, c.Z + sin(a) * R * 1.2)
-end
-for m = 0, 3 do seg3(pts[m], pts[(m + 1) % 4], k == 0 and 2.2 or 1.2, colAt(m + k * 4), k == 0 and 0 or .5) end
-end
-elseif style == "Октаэдр" or style == "Клетка" or style == "Сфера" then
-local shape = style == "Клетка" and "3D бокс" or style
-local segs = shapeSegs(shape, cf, size * sz, char)
-for i = 1, math.min(#segs, 40) do seg3(segs[i][1], segs[i][2], 1.8, colAt(i), 0) end
-elseif style == "Прицел" then
-local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
-for x = -1, 1, 2 do for y = -1, 1, 2 do for z = -1, 1, 2 do
-local p = proj((cf * CFrame.new(size.X / 2 * x, size.Y / 2 * y, size.Z / 2 * z)).Position)
-if not p then return end
-x0, y0, x1, y1 = math.min(x0, p.X), math.min(y0, p.Y), math.max(x1, p.X), math.max(y1, p.Y)
-end end end
-local pad = 4 + 7 * (sin(t * 3) * .5 + .5)
-x0, y0, x1, y1 = x0 - pad, y0 - pad, x1 + pad, y1 + pad
-local L = math.clamp(math.min(x1 - x0, y1 - y0) * .3, 8, 26)
-local col = colAt(0)
-local V = Vector2.new
-seg2(V(x0, y0), V(x0 + L, y0), 2.2, col); seg2(V(x0, y0), V(x0, y0 + L), 2.2, col)
-seg2(V(x1, y0), V(x1 - L, y0), 2.2, col); seg2(V(x1, y0), V(x1, y0 + L), 2.2, col)
-seg2(V(x0, y1), V(x0 + L, y1), 2.2, col); seg2(V(x0, y1), V(x0, y1 - L), 2.2, col)
-seg2(V(x1, y1), V(x1 - L, y1), 2.2, col); seg2(V(x1, y1), V(x1, y1 - L), 2.2, col)
-end
-end
-local function scoreOf(plr)
-local char = aliveChar(plr)
-if not char then return nil end
-local root = char:FindFirstChild("HumanoidRootPart")
-if not root then return nil end
-local dist = (root.Position - Camera.CFrame.Position).Magnitude
-if dist > S.tgtRange then return nil end
-if S.tgtSel == "По дистанции" then return dist end
-local p, on = Camera:WorldToViewportPoint(root.Position)
-if not on then return nil end
-local sd = (Vector2.new(p.X, p.Y) - aimCenter()).Magnitude
-if sd > S.tgtFov then return nil end
-return sd
-end
-local hud = new("CanvasGroup", {
-AnchorPoint = Vector2.new(.5, 1), Position = UDim2.new(.5, 0, .84, 0), Size = UDim2.fromOffset(240, 66),
-BackgroundColor3 = T.bg, GroupTransparency = 1, Visible = false, ZIndex = 30,
-}, Gui)
-corner(hud, 12)
-new("UIStroke", { Color = T.accent, Transparency = .5, Thickness = 1.3 }, hud)
-local hudScale = new("UIScale", { Scale = .85 }, hud)
-local hudName = new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 7), Size = UDim2.new(1, -28, 0, 18), Text = "",
-Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Left,
-TextTruncate = Enum.TextTruncate.AtEnd,
-}, hud)
-local hudInfo = new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 27), Size = UDim2.new(1, -28, 0, 14), Text = "",
-Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Left,
-}, hud)
-local hudBar = new("Frame", { Position = UDim2.new(0, 14, 0, 47), Size = UDim2.new(1, -28, 0, 8), BackgroundColor3 = T.off }, hud)
-corner(hudBar, 4)
-local hudFill = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(80, 255, 120) }, hudBar)
-corner(hudFill, 4)
-Target.hud = hud
-local function setHud(on)
-if on == Target.hudOn then return end
-Target.hudOn = on
-if on then
-hud.Visible = true
-tw(hud, .2, { GroupTransparency = 0 })
-tw(hudScale, .35, { Scale = 1 }, Enum.EasingStyle.Back)
-else
-tw(hud, .2, { GroupTransparency = 1 })
-tw(hudScale, .2, { Scale = .85 })
-task.delay(.22, function() if not Target.hudOn then hud.Visible = false end end)
-end
-end
-function Target.step(dt)
-if not (unlocked and S.tgt) then
-if Target.active then hideEffects(); Target.active = false end
-Target.cur = nil
-setHud(false)
-return
-end
-local best, bestScore
-for _, plr in ipairs(Players:GetPlayers()) do
-if plr ~= LP and (not S.tgtTeam or isEnemy(plr)) then
-local sc = scoreOf(plr)
-if sc and (not bestScore or sc < bestScore) then best, bestScore = plr, sc end
-end
-end
-local cur = Target.cur
-if cur and cur ~= best and cur.Parent == Players and cur ~= LP and (not S.tgtTeam or isEnemy(cur)) then
-local cs = scoreOf(cur)
-if cs and bestScore and cs <= bestScore * 1.3 + 15 then best = cur end
-end
-Target.cur = best
-local char, hum
-if best then char, hum = aliveChar(best) end
-local root = char and char:FindFirstChild("HumanoidRootPart")
-if not (best and root and hum) then
-if Target.active then hideEffects(); Target.active = false end
-setHud(false)
-return
-end
-P.inv = Camera.CFrame:Inverse()
-P.vp = Camera.ViewportSize
-P.sc = (P.vp.Y / 2) / math.tan(math.rad(Camera.FieldOfView) / 2)
-usedD, usedL = 0, 0
-local cf, size = char:GetBoundingBox()
-pcall(draw, S.tgtStyle, cf, size, char)
-for i = usedD + 1, #dots do dots[i].Visible = false end
-for i = usedL + 1, #lines do lines[i].Visible = false end
-Target.active = true
-if S.tgtHud then
-setHud(true)
-local frac = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
-Target.hpFill = Target.hpFill + (frac - Target.hpFill) * math.min((dt or .016) * 8, 1)
-hudFill.Size = UDim2.fromScale(math.max(Target.hpFill, .01), 1)
-hudFill.BackgroundColor3 = Color3.fromRGB(255, 70, 70):Lerp(Color3.fromRGB(80, 255, 120), Target.hpFill)
-hudName.Text = best.DisplayName
-hudInfo.Text = string.format("%d / %d HP  ·  %dm", hum.Health, hum.MaxHealth, (root.Position - Camera.CFrame.Position).Magnitude)
-else
-setHud(false)
-end
-end
-end
-local function stretchStep()
-if not S.stretch then return end
-local kx, ky = 1, 1
-local m = S.stretchMode
-if m == "Своя" then
-kx, ky = S.stretchX / 100, S.stretchVal / 100
-else
-local a, b = m:match("^(%d+):(%d+)$")
-local vp = Camera.ViewportSize
-if a and vp.Y > 0 then
-local r, t = vp.X / vp.Y, tonumber(a) / tonumber(b)
-if t < r then ky = t / r else kx = r / t end
-end
-end
-Camera.CFrame = Camera.CFrame * CFrame.new(0, 0, 0, kx, 0, 0, 0, ky, 0, 0, 0, 1)
-end
-local Xhair = { dyn = 0 }
-do
-local C3 = Color3.fromRGB
-local XH_COLORS = {
-["Белый"] = C3(255, 255, 255), ["Красный"] = C3(255, 60, 70), ["Зелёный"] = C3(70, 255, 120),
-["Голубой"] = C3(80, 210, 255), ["Розовый"] = C3(255, 110, 200), ["Жёлтый"] = C3(255, 225, 80),
-}
-Xhair.styles = { "Крест", "Т-образный", "Крест + точка", "Точка", "Круг", "Круг + риски", "Квадрат", "Ромб", "Углы", "Х-крест", "Звезда", "Стрелки", "Треугольник" }
-Xhair.colors = { "Белый", "Тема", "Красный", "Зелёный", "Голубой", "Розовый", "Жёлтый", "Радуга" }
-local layer = new("Frame", { Name = "Xhair", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 0 }, Gui)
-local function build(parent)
-local o = { segs = {} }
-for i = 1, 16 do
-local f = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Visible = false }, parent)
-local st = new("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 1, Enabled = false }, f)
-o.segs[i] = { f = f, st = st }
-end
-o.ring = new("Frame", { AnchorPoint = Vector2.new(.5, .5), BackgroundTransparency = 1, Visible = false }, parent)
-corner(o.ring, 999)
-o.ringStroke = new("UIStroke", { Thickness = 2 }, o.ring)
-o.dot = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Visible = false }, parent)
-corner(o.dot, 999)
-o.dotStroke = new("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 1, Enabled = false }, o.dot)
-return o
-end
-local function draw(o, c, gapExtra, col, rot)
-local L, th = S.xhSize, S.xhThick
-local g = S.xhGap + gapExtra
-local alpha = 1 - S.xhAlpha / 100
-local style = S.xhStyle
-local cosr, sinr = math.cos(rot), math.sin(rot)
-local n = 0
-local function rotp(x, y) return Vector2.new(c.X + x * cosr - y * sinr, c.Y + x * sinr + y * cosr) end
-local function seg(x1, y1, x2, y2)
-n = n + 1
-local sg = o.segs[n]
-if not sg then return end
-local a, b = rotp(x1, y1), rotp(x2, y2)
-local d = b - a
-local f = sg.f
-f.Visible = true
-f.BackgroundColor3 = col
-f.BackgroundTransparency = alpha
-f.Size = UDim2.fromOffset(d.Magnitude + th, th)
-f.Position = UDim2.fromOffset((a.X + b.X) / 2, (a.Y + b.Y) / 2)
-f.Rotation = math.deg(math.atan2(d.Y, d.X))
-sg.st.Enabled = S.xhOutline
-sg.st.Transparency = alpha
-end
-local function cross()
-seg(0, -g, 0, -g - L); seg(0, g, 0, g + L); seg(-g, 0, -g - L, 0); seg(g, 0, g + L, 0)
-end
-local showDot, ringR = S.xhDot, nil
-if style == "Крест" then cross()
-elseif style == "Т-образный" then
-seg(0, g, 0, g + L); seg(-g, 0, -g - L, 0); seg(g, 0, g + L, 0)
-elseif style == "Крест + точка" then cross(); showDot = true
-elseif style == "Точка" then showDot = true
-elseif style == "Круг" then ringR = L
-elseif style == "Круг + риски" then
-ringR = L + g
-local r2, r1 = ringR + L * .6, ringR
-seg(0, -r1, 0, -r2); seg(0, r1, 0, r2); seg(-r1, 0, -r2, 0); seg(r1, 0, r2, 0)
-elseif style == "Квадрат" then
-local h = L
-seg(-h, -h, h, -h); seg(h, -h, h, h); seg(h, h, -h, h); seg(-h, h, -h, -h)
-elseif style == "Ромб" then
-local h = L * 1.25
-seg(0, -h, h, 0); seg(h, 0, 0, h); seg(0, h, -h, 0); seg(-h, 0, 0, -h)
-elseif style == "Углы" then
-local h, a = L, math.max(3, L * .55)
-seg(-h, -h, -h + a, -h); seg(-h, -h, -h, -h + a)
-seg(h, -h, h - a, -h); seg(h, -h, h, -h + a)
-seg(-h, h, -h + a, h); seg(-h, h, -h, h - a)
-seg(h, h, h - a, h); seg(h, h, h, h - a)
-elseif style == "Х-крест" then
-local d1, e = g * .7, (g + L) * .7
-seg(-d1, -d1, -e, -e); seg(d1, -d1, e, -e); seg(-d1, d1, -e, e); seg(d1, d1, e, e)
-elseif style == "Звезда" then
-cross()
-local d1, e = g * .7, (g + L) * .7
-seg(-d1, -d1, -e, -e); seg(d1, -d1, e, -e); seg(-d1, d1, -e, e); seg(d1, d1, e, e)
-elseif style == "Стрелки" then
-local a = L * .6
-seg(0, -g, -a, -g - a); seg(0, -g, a, -g - a)
-seg(0, g, -a, g + a); seg(0, g, a, g + a)
-seg(-g, 0, -g - a, -a); seg(-g, 0, -g - a, a)
-seg(g, 0, g + a, -a); seg(g, 0, g + a, a)
-elseif style == "Треугольник" then
-seg(0, -L, L * .87, L * .5); seg(L * .87, L * .5, -L * .87, L * .5); seg(-L * .87, L * .5, 0, -L)
-end
-for i = n + 1, #o.segs do o.segs[i].f.Visible = false end
-if ringR then
-o.ring.Visible = true
-o.ring.Position = UDim2.fromOffset(c.X, c.Y)
-o.ring.Size = UDim2.fromOffset(ringR * 2, ringR * 2)
-o.ringStroke.Color = col
-o.ringStroke.Thickness = th
-o.ringStroke.Transparency = alpha
-else
-o.ring.Visible = false
-end
-if showDot then
-local ds = math.max(2, th * 1.6)
-o.dot.Visible = true
-o.dot.Position = UDim2.fromOffset(c.X, c.Y)
-o.dot.Size = UDim2.fromOffset(ds, ds)
-o.dot.BackgroundColor3 = col
-o.dot.BackgroundTransparency = alpha
-o.dotStroke.Enabled = S.xhOutline
-o.dotStroke.Transparency = alpha
-else
-o.dot.Visible = false
-end
-end
-local main = build(layer)
-Xhair.preview = nil
-local rp = RaycastParams.new()
-rp.FilterType = Enum.RaycastFilterType.Exclude
-local function overPlayer()
-rp.FilterDescendantsInstances = { LP.Character }
-local vp = Camera.ViewportSize
-local ray = Camera:ViewportPointToRay(vp.X / 2, vp.Y / 2)
-local res = workspace:Raycast(ray.Origin, ray.Direction * 1000, rp)
-if res and res.Instance then
-local m = res.Instance:FindFirstAncestorOfClass("Model")
-if m and m:FindFirstChildOfClass("Humanoid") and Players:GetPlayerFromCharacter(m) then return true end
-end
-return false
-end
-local function pickColor()
-local m = S.xhColor
-if m == "Радуга" then return Color3.fromHSV((os.clock() * .3) % 1, .8, 1) end
-if m == "Тема" then return T.accent end
-return XH_COLORS[m] or XH_COLORS["Белый"]
-end
-function Xhair.makePreview(parent)
-Xhair.preview = build(parent)
-Xhair.previewFrame = parent
-end
-function Xhair.step(dt)
-local on = unlocked and S.xh
-layer.Visible = on and true or false
-local col = pickColor()
-local rot = math.rad((os.clock() * S.xhSpin) % 360)
-if S.xhDyn then
-local char = LP.Character
-local root = char and char:FindFirstChild("HumanoidRootPart")
-local sp = root and root.AssemblyLinearVelocity.Magnitude or 0
-Xhair.dyn = Xhair.dyn + (math.min(sp * .25, 14) - Xhair.dyn) * math.min((dt or .016) * 10, 1)
-else
-Xhair.dyn = 0
-end
-if on then
-local vp = Camera.ViewportSize
-local c = Vector2.new(vp.X / 2 + S.xhOffX, vp.Y / 2 + S.xhOffY)
-local mc = col
-if S.xhHit and overPlayer() then mc = XH_COLORS["Красный"] end
-draw(main, c, Xhair.dyn, mc, rot)
-end
-if Xhair.preview and Xhair.page and Xhair.page.Visible and Main.Visible then
-local sz = Xhair.previewFrame.AbsoluteSize / math.max(MainScale.Scale, .01)
-draw(Xhair.preview, sz / 2, Xhair.dyn, col, rot)
-end
-end
-end
-local function CC(r, g, b) return Color3.fromRGB(r, g, b) end
-local Themes = {
-["Чёрно-белая"] = { bg = CC(8, 8, 10), side = CC(14, 14, 17), card = CC(22, 22, 26), hover = CC(40, 40, 46), off = CC(58, 58, 66),
-accent = WHITE, text = WHITE, sub = CC(150, 150, 158), g1 = CC(4, 4, 6), g2 = CC(52, 52, 60), dust = CC(255, 255, 255), dir = -1, tw = 1 },
-["Лавандовая"] = { bg = CC(24, 18, 38), side = CC(32, 24, 52), card = CC(46, 36, 72), hover = CC(62, 50, 96), off = CC(80, 68, 114),
-accent = CC(190, 160, 255), text = CC(242, 235, 255), sub = CC(176, 160, 212), g1 = CC(14, 10, 26), g2 = CC(92, 62, 150), dust = CC(224, 204, 255), dir = -1, tw = 1 },
-["Космическая"] = { bg = CC(6, 8, 20), side = CC(10, 14, 32), card = CC(18, 24, 54), hover = CC(28, 38, 80), off = CC(44, 54, 104),
-accent = CC(110, 170, 255), text = CC(228, 236, 255), sub = CC(132, 152, 204), g1 = CC(3, 4, 14), g2 = CC(46, 30, 120), dust = CC(210, 225, 255), dir = -1, tw = 2.4 },
-["Хэллоуин"] = { bg = CC(14, 8, 4), side = CC(22, 13, 6), card = CC(38, 22, 8), hover = CC(58, 33, 10), off = CC(88, 52, 16),
-accent = CC(255, 132, 24), text = CC(255, 238, 216), sub = CC(204, 152, 102), g1 = CC(8, 4, 2), g2 = CC(110, 44, 0), dust = CC(255, 150, 40), dir = -1, tw = 1.4 },
-["Сакура"] = { bg = CC(30, 16, 22), side = CC(40, 22, 30), card = CC(60, 34, 46), hover = CC(82, 47, 64), off = CC(106, 64, 84),
-accent = CC(255, 160, 200), text = CC(255, 240, 246), sub = CC(214, 164, 188), g1 = CC(20, 10, 16), g2 = CC(136, 62, 100), dust = CC(255, 205, 228), dir = 1, tw = 1 },
-["Океан"] = { bg = CC(6, 18, 26), side = CC(8, 26, 38), card = CC(14, 42, 60), hover = CC(22, 62, 86), off = CC(36, 88, 116),
-accent = CC(80, 210, 230), text = CC(228, 249, 255), sub = CC(124, 174, 194), g1 = CC(3, 12, 20), g2 = CC(0, 90, 114), dust = CC(176, 242, 255), dir = -1, tw = 1.2 },
-["Неон"] = { bg = CC(10, 6, 22), side = CC(16, 10, 34), card = CC(28, 16, 56), hover = CC(44, 24, 84), off = CC(70, 36, 120),
-accent = CC(255, 60, 200), text = CC(255, 235, 252), sub = CC(190, 140, 220), g1 = CC(6, 2, 16), g2 = CC(0, 120, 150), dust = CC(80, 255, 255), dir = -1, tw = 1.8 },
-["Матрица"] = { bg = CC(2, 10, 4), side = CC(4, 16, 8), card = CC(8, 28, 14), hover = CC(12, 44, 22), off = CC(20, 70, 34),
-accent = CC(40, 255, 110), text = CC(214, 255, 226), sub = CC(96, 170, 120), g1 = CC(0, 6, 2), g2 = CC(0, 70, 26), dust = CC(60, 255, 120), dir = 1, tw = 1.6 },
-["Закат"] = { bg = CC(24, 10, 12), side = CC(34, 14, 16), card = CC(56, 22, 22), hover = CC(80, 32, 28), off = CC(112, 48, 38),
-accent = CC(255, 120, 80), text = CC(255, 238, 228), sub = CC(214, 150, 130), g1 = CC(16, 6, 10), g2 = CC(170, 56, 70), dust = CC(255, 190, 120), dir = -1, tw = 1 },
-["Мята"] = { bg = CC(8, 24, 22), side = CC(10, 34, 30), card = CC(16, 54, 46), hover = CC(24, 78, 66), off = CC(38, 110, 92),
-accent = CC(110, 255, 200), text = CC(230, 255, 248), sub = CC(130, 190, 176), g1 = CC(4, 16, 14), g2 = CC(20, 110, 90), dust = CC(190, 255, 235), dir = -1, tw = 1 },
-["Кровавая"] = { bg = CC(16, 4, 6), side = CC(24, 6, 8), card = CC(42, 10, 14), hover = CC(64, 14, 20), off = CC(98, 22, 30),
-accent = CC(255, 50, 70), text = CC(255, 226, 230), sub = CC(200, 120, 130), g1 = CC(8, 2, 3), g2 = CC(120, 10, 24), dust = CC(255, 80, 90), dir = -1, tw = 1.2 },
-["Золото"] = { bg = CC(18, 14, 6), side = CC(26, 20, 8), card = CC(44, 34, 12), hover = CC(66, 50, 16), off = CC(100, 76, 22),
-accent = CC(255, 205, 70), text = CC(255, 246, 222), sub = CC(206, 184, 130), g1 = CC(10, 8, 2), g2 = CC(120, 86, 10), dust = CC(255, 226, 140), dir = -1, tw = 1.2 },
-}
-local ThemeOrder = { "Чёрно-белая", "Лавандовая", "Космическая", "Хэллоуин", "Сакура", "Океан", "Неон", "Матрица", "Закат", "Мята", "Кровавая", "Золото" }
-local function nearC(a, b)
-return math.abs(a.R - b.R) < .004 and math.abs(a.G - b.G) < .004 and math.abs(a.B - b.B) < .004
-end
-function Theme.remap(old, new)
-local fills = { "bg", "side", "card", "hover", "off", "accent" }
-local function mapFill(c)
-for _, r in ipairs(fills) do if nearC(c, old[r]) then return new[r] end end
-end
-local function mapText(c)
-if nearC(c, old.text) then return new.text end
-if nearC(c, old.sub) then return new.sub end
-end
-local function proc(d)
-if d:GetAttribute("NoTheme") then return end
-local par = d.Parent
-if par and par:GetAttribute("NoTheme") then return end
-if d:IsA("GuiObject") then
-local n = mapFill(d.BackgroundColor3)
-if n then d.BackgroundColor3 = n end
-if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
-local tc = mapText(d.TextColor3)
-if tc then d.TextColor3 = tc end
-if d:IsA("TextBox") then
-local pc = mapText(d.PlaceholderColor3)
-if pc then d.PlaceholderColor3 = pc end
-end
-end
-if d:IsA("ScrollingFrame") then
-local sc = mapFill(d.ScrollBarImageColor3)
-if sc then d.ScrollBarImageColor3 = sc end
-end
-elseif d:IsA("UIStroke") then
-local n = mapFill(d.Color)
-if n then d.Color = n end
-end
-end
-for _, root in ipairs({ Main, FlyPanel, FpsLabel, Fab, Target.hud }) do
-proc(root)
-for _, d in ipairs(root:GetDescendants()) do proc(d) end
-end
-end
-function Theme.apply(name)
-local th = Themes[name]
-if not th then return end
-local old = { bg = T.bg, side = T.side, card = T.card, hover = T.hover, off = T.off, accent = T.accent, text = T.text, sub = T.sub }
-Theme.remap(old, th)
-for k in pairs(old) do T[k] = th[k] end
-S.theme = name
-BGGrad.Color = ColorSequence.new({ CSK(0, th.g1), CSK(.5, th.g2), CSK(1, th.g1) })
-Sweep.BackgroundColor3 = th.dust
-for _, d in ipairs(Dust) do d.f.BackgroundColor3 = th.dust end
-Theme.dir, Theme.tw = th.dir or -1, th.tw or 1
-FabGrad.Color = ColorSequence.new({ CSK(0, th.accent), CSK(.5, th.off), CSK(1, th.accent) })
-for nm, lbl in pairs(Theme.cards) do lbl.Text = (nm == name and "• " or "") .. nm end
-end
-conn(RunService.RenderStepped, function(dt)
-Camera = workspace.CurrentCamera
-FabGrad.Rotation = (os.clock() * 90) % 360
-pcall(bgStep, dt)
-pcall(fpsCounterStep, dt)
-if not unlocked then return end
-pcall(aimStep)
-pcall(stretchStep)
-pcall(espStep)
-pcall(lightStep)
-pcall(playerStep)
-pcall(flyStep, dt)
-pcall(Shaders.step)
-pcall(hitboxStep)
-pcall(Music.step)
-pcall(Target.step, dt)
-pcall(Xhair.step, dt)
-if S.halo then pcall(Halo.update) end
-if GlowHL then GlowHL.FillColor = Color3.fromHSV((os.clock() * .25) % 1, .7, 1); GlowHL.OutlineColor = GlowHL.FillColor end
-end)
-local AimPage     = Tab("Аим")
-local EspPage     = Tab("ESP")
-local TargetPage  = Tab("Таргет")
-local XhairPage   = Tab("Прицел")
-local StretchPage = Tab("Растяг")
-local VisualsPage = Tab("Визуалы")
-local ShadersPage = Tab("Шейдеры")
-local PlayerPage  = Tab("Игрок")
-local FpsPage     = Tab("FPS")
-local SpotifyPage = Tab("Spotify")
-local ThemePage   = Tab("Темы")
-local ConfigPage  = Tab("Конфиги")
-local SetPage     = Tab("Настройки")
-Section(AimPage, "Аимбот")
-Toggle(AimPage, "Включить аим", "aim", function(v) Notify(v and "Аим включён" or "Аим выключен") end)
-Toggle(AimPage, "Только при зажатом ПКМ (ПК)", "aimHold")
-Selector(AimPage, "Цель", "aimPartSel", { "Голова", "Торс", "Центр" })
-Section(AimPage, "Параметры")
-Slider(AimPage, "Радиус FOV", "aimFov", 30, 400, 5, " px")
-Slider(AimPage, "Плавность", "aimSmooth", 0, 95, 1, "%")
-Slider(AimPage, "Упреждение", "aimPred", 0, 30, 1)
-Section(AimPage, "Проверки")
-Toggle(AimPage, "Не целиться в своих", "aimTeam")
-Toggle(AimPage, "Проверка стен", "aimWall")
-Toggle(AimPage, "Показывать круг FOV", "aimShowFov")
-Section(AimPage, "Хитбокс головы")
-Toggle(AimPage, "Увеличить хитбокс головы", "hitbox", function(v)
-if not v then hitboxRestore() end
-Notify(v and "Хитбокс головы включён" or "Хитбокс головы выключен")
-end)
-Slider(AimPage, "Размер головы", "hitboxSize", 1.5, 15, .5, "")
-Slider(AimPage, "Прозрачность хитбокса", "hitboxTrans", 0, 100, 5, "%")
-Toggle(AimPage, "Подсветка хитбокса головы", "hitboxHl")
-Section(AimPage, "Хитбокс тела (квадрат)")
-Toggle(AimPage, "Увеличить хитбокс тела", "bodyHitbox", function(v)
-if not v then hitboxRestore() end
-Notify(v and "Хитбокс тела включён" or "Хитбокс тела выключен")
-end)
-Slider(AimPage, "Размер тела", "bodySize", 2, 20, .5, "")
-Slider(AimPage, "Прозрачность тела", "bodyTrans", 0, 100, 5, "%")
-Toggle(AimPage, "Подсветка хитбокса тела", "bodyHl")
-Toggle(AimPage, "Не трогать своих", "hitboxTeam")
-Section(EspPage, "ESP")
-Toggle(EspPage, "Включить ESP", "esp", function(v) Notify(v and "ESP включён" or "ESP выключен") end)
-Selector(EspPage, "Вид рамки", "espStyle", { "Бокс", "Углы", "Ромб", "Круг", "Выкл" })
-Selector(EspPage, "3D вид", "esp3d", { "Выкл", "3D бокс", "3D углы", "Октаэдр", "Шестигранник", "Цилиндр", "Сфера", "Скелет" })
-Toggle(EspPage, "Имя и дистанция", "espName")
-Selector(EspPage, "Вид здоровья", "espHpStyle", { "Полоска", "Хотбар", "Плашка", "Сердца", "Цифры", "Выкл" })
-Toggle(EspPage, "Подсветка (чамсы)", "espChams")
-Section(EspPage, "Линии")
-Toggle(EspPage, "Линии (трейсеры)", "espTracer")
-Selector(EspPage, "Откуда", "espTracerPos", { "Снизу", "Центр", "Сверху" })
-Selector(EspPage, "Вид линии", "espTracerStyle", { "Линия", "Толстая", "Градиент" })
-Section(EspPage, "Стрелки у центра экрана")
-Toggle(EspPage, "Стрелки + расстояние", "espArrows")
-Toggle(EspPage, "Показывать всегда", "espArrowAlways")
-Slider(EspPage, "Радиус стрелок", "arrowRadius", 10, 45, 1, "%")
-Section(EspPage, "Внешний вид")
-Selector(EspPage, "Цвет", "espColor", ESPColorNames)
-Toggle(EspPage, "Цвет по команде", "espTeamCol")
-Slider(EspPage, "Макс. дистанция", "espDist", 100, 3000, 50, " m")
-Section(VisualsPage, "Персонаж")
-Toggle(VisualsPage, "Нимб", "halo", function(v) if v then pcall(Halo.build) else Halo.clear() end end)
-Toggle(VisualsPage, "Шлейф", "trail", setTrail)
-Toggle(VisualsPage, "Радужное свечение", "selfGlow", setGlow)
-Section(VisualsPage, "Мир и камера")
-Toggle(VisualsPage, "Фулбрайт", "fullbright", function() restoreLight() end)
-Toggle(VisualsPage, "Без тумана", "nofog", function() restoreLight() end)
-Toggle(VisualsPage, "Свой FOV камеры", "fov", function(v) if not v then Camera.FieldOfView = origFov end end)
-Slider(VisualsPage, "FOV камеры", "fovVal", 50, 120, 1)
-Section(ShadersPage, "Шейдеры")
-Selector(ShadersPage, "Пресет", "shaderPreset", Shaders.names, Shaders.applyPreset)
-Slider(ShadersPage, "Интенсивность", "shaderInt", 20, 100, 5, "%", function()
-Shaders.token = Shaders.token + 1
-local my = Shaders.token
-task.delay(.2, function()
-if my == Shaders.token and Shaders.active then Shaders.apply(Shaders.active) end
-end)
-end)
-Button(ShadersPage, "Вернуть всё на место", function()
-Shaders.reset()
-if Selectors.shaderPreset then Selectors.shaderPreset("Выкл") end
-Notify("Освещение возвращено")
-end)
-InfoCard(ShadersPage, "Реалистичный: мягкий свет, блум, дымка, глубина резкости.\nКибер-панк: ночь, неон, фиолетовый туман, пульсирующий оттенок.\nЗакат и Холодный — кинематографичные цветокоррекции. Кнопка выше возвращает освещение игры как было.", 88)
-Section(TargetPage, "Таргет-режим")
-Toggle(TargetPage, "Включить таргет", "tgt", function(v) Notify(v and "Таргет включён" or "Таргет выключен") end)
-Selector(TargetPage, "Вид эффекта", "tgtStyle", {
-"Кольцо", "Двойное кольцо", "Спираль", "Призраки", "Орбиты", "Пульс", "Торнадо",
-"Звёзды", "Нимб", "Квадрат", "Октаэдр", "Клетка", "Сфера", "Прицел",
-})
-Selector(TargetPage, "Цвет эффекта", "tgtColor", { "Тема", "Красный", "Белый", "Голубой", "Розовый", "Зелёный", "Золотой", "Радуга" })
-Toggle(TargetPage, "Панель цели (HP, дистанция)", "tgtHud")
-Section(TargetPage, "Выбор цели")
-Selector(TargetPage, "Кого брать", "tgtSel", { "К прицелу", "По дистанции" })
-Slider(TargetPage, "Дальность", "tgtRange", 50, 1000, 10, " m")
-Slider(TargetPage, "Радиус от прицела", "tgtFov", 50, 600, 10, " px")
-Toggle(TargetPage, "Не выбирать своих", "tgtTeam")
-Section(TargetPage, "Настройка эффекта")
-Slider(TargetPage, "Размер", "tgtSize", 50, 200, 5, "%")
-Slider(TargetPage, "Скорость", "tgtSpeed", 50, 250, 5, "%")
-InfoCard(TargetPage, "Эффект крутится вокруг ближайшей к прицелу цели, а панель показывает её имя, здоровье и расстояние. Цель не прыгает между игроками, пока прежняя остаётся рядом с прицелом.", 76)
-Xhair.page = XhairPage
-Section(XhairPage, "Прицел по центру")
-Toggle(XhairPage, "Включить прицел", "xh", function(v) Notify(v and "Прицел включён" or "Прицел выключен") end)
-Selector(XhairPage, "Вид прицела", "xhStyle", Xhair.styles)
-Selector(XhairPage, "Цвет", "xhColor", Xhair.colors)
-Section(XhairPage, "Предпросмотр")
-do
-local card = Card(XhairPage, 116)
-local pf = new("Frame", { Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 1, -12), BackgroundColor3 = T.bg, ClipsDescendants = true }, card)
-corner(pf, 8)
-Xhair.makePreview(pf)
-end
-Section(XhairPage, "Редактор")
-Slider(XhairPage, "Размер", "xhSize", 2, 40, 1, " px")
-Slider(XhairPage, "Толщина", "xhThick", 1, 8, 1, " px")
-Slider(XhairPage, "Зазор в центре", "xhGap", 0, 30, 1, " px")
-Slider(XhairPage, "Непрозрачность", "xhAlpha", 10, 100, 5, "%")
-Slider(XhairPage, "Вращение", "xhSpin", 0, 360, 10, "°/с")
-Slider(XhairPage, "Смещение по X", "xhOffX", -150, 150, 1, " px")
-Slider(XhairPage, "Смещение по Y", "xhOffY", -150, 150, 1, " px")
-Toggle(XhairPage, "Чёрная обводка", "xhOutline")
-Toggle(XhairPage, "Точка в центре", "xhDot")
-Toggle(XhairPage, "Расширяется при движении", "xhDyn")
-Toggle(XhairPage, "Краснеет на игроке", "xhHit")
-InfoCard(XhairPage, "Любые изменения видны сразу в предпросмотре. Настройки прицела сохраняются в конфигурациях.", 48)
-Section(StretchPage, "Растяжка экрана")
-Toggle(StretchPage, "Включить растяг", "stretch", function(v) Notify(v and "Растяг включён" or "Растяг выключен") end)
-Selector(StretchPage, "Формат", "stretchMode", { "4:3", "5:4", "3:2", "16:10", "Своя" })
-Section(StretchPage, "Свой растяг (формат «Своя»)")
-Slider(StretchPage, "Сжатие по вертикали", "stretchVal", 30, 100, 1, "%")
-Slider(StretchPage, "Сжатие по горизонтали", "stretchX", 30, 100, 1, "%")
-InfoCard(StretchPage, "4:3 и 5:4 считаются автоматически под твой экран. Для своего растяга выбери формат «Своя» и двигай ползунки: чем меньше значение, тем шире выглядят игроки. Привычно 65–80% по вертикали.", 78)
-Section(PlayerPage, "Скорость")
-Toggle(PlayerPage, "Своя скорость", "speed")
-Slider(PlayerPage, "Скорость бега", "speedVal", 16, 250, 1)
-Section(PlayerPage, "Прыжок")
-Toggle(PlayerPage, "Свой прыжок", "jump")
-Slider(PlayerPage, "Сила прыжка", "jumpVal", 50, 300, 5)
-Toggle(PlayerPage, "Бесконечный прыжок", "infJump")
-Section(PlayerPage, "Полёт")
-Toggle(PlayerPage, "Флай", "fly", function(v)
-if v then flyStart() else flyStop() end
-flyPanelShow(v)
-Notify(v and "Флай включён" or "Флай выключен")
-end)
-Slider(PlayerPage, "Скорость полёта", "flySpeed", 10, 250, 5, "", function(v) SpeedLbl.Text = tostring(v) end)
-InfoCard(PlayerPage, "Флай: средняя кнопка мыши (колесо) включает и выключает полёт. На телефоне — переключатель выше и мини-меню на экране (ВВЕРХ / ВНИЗ / скорость). На ПК: Space — вверх, Ctrl или Q — вниз.", 76)
-Section(FpsPage, "FPS буст")
-Selector(FpsPage, "Режим", "fpsMode", { "Выкл", "Простой", "Сильный", "Картошка" }, applyFps)
-InfoCard(FpsPage, "Простой: без теней, эффектов и волн воды.\nСильный: + простые материалы, без частиц, лучей и источников света.\nКартошка: + без текстур и декалей, самое низкое качество и мыло.", 76)
-Section(FpsPage, "Счётчик")
-Toggle(FpsPage, "Показывать FPS", "showFps")
-local Config = { selected = nil, autoName = nil }
-do
-Section(SpotifyPage, "Плеер")
-do
-local f = Card(SpotifyPage, 156)
-local cover = new("Frame", { Position = UDim2.fromOffset(12, 12), Size = UDim2.fromOffset(72, 72), BackgroundColor3 = Color3.new(1, 1, 1) }, f)
-corner(cover, 12)
-local coverGrad = new("UIGradient", { Color = ColorSequence.new(MUSIC_GREEN, Color3.fromRGB(14, 80, 52)), Rotation = 45 }, cover)
-new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "♪", Font = Enum.Font.GothamBlack, TextSize = 34, TextColor3 = Color3.new(1, 1, 1) }, cover)
-local title = new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(96, 14), Size = UDim2.new(1, -108, 0, 20), Text = "Выбери трек",
-Font = Enum.Font.GothamBold, TextSize = 16, TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-}, f)
-local artist = new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(96, 36), Size = UDim2.new(1, -108, 0, 16), Text = "Плеер Cozy Hub",
-Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-}, f)
-local status = new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(96, 56), Size = UDim2.new(1, -108, 0, 16), Text = "",
-Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = MUSIC_GREEN, TextXAlignment = Enum.TextXAlignment.Left,
-}, f)
-local bar = new("Frame", { Position = UDim2.new(0, 12, 0, 96), Size = UDim2.new(1, -24, 0, 5), BackgroundColor3 = T.off }, f)
-corner(bar, 3)
-local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = MUSIC_GREEN }, bar)
-corner(fill, 3)
-local cur = new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 104), Size = UDim2.fromOffset(40, 12), Text = "0:00",
-Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Left,
-}, f)
-local dur = new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.new(1, -52, 0, 104), Size = UDim2.fromOffset(40, 12), Text = "0:00",
-Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Right,
-}, f)
-local seekHit = new("TextButton", { BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 88), Size = UDim2.new(1, -24, 0, 20), Text = "" }, f)
-local seeking = false
-local function seekTo(i)
-local len = Snd.TimeLength
-if len and len > 0 then
-local a = math.clamp((i.Position.X - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
-Snd.TimePosition = a * len
-end
-end
-seekHit.InputBegan:Connect(function(i)
-if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-seeking = true; seekTo(i)
-end
-end)
-conn(UIS.InputChanged, function(i)
-if seeking and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then seekTo(i) end
-end)
-conn(UIS.InputEnded, function(i)
-if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then seeking = false end
-end)
-local ctl = new("Frame", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 0, 119), Size = UDim2.fromOffset(240, 34), BackgroundTransparency = 1 }, f)
-new("UIListLayout", {
-FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center,
-VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder,
-}, ctl)
-local function cbtn(txt, w, order)
-local b = new("TextButton", {
-Size = UDim2.fromOffset(w, w), BackgroundColor3 = T.off, Text = txt, Font = Enum.Font.GothamBold,
-TextSize = 13, TextColor3 = T.text, LayoutOrder = order,
-}, ctl)
-corner(b, w / 2)
-return b
-end
-local shuf, prev, play, nxt, rep = cbtn("⇄", 30, 1), cbtn("|◀", 30, 2), cbtn("▶", 38, 3), cbtn("▶|", 30, 4), cbtn("↻", 30, 5)
-play.BackgroundColor3 = MUSIC_GREEN; play.TextColor3 = Color3.new(0, 0, 0); play.TextSize = 15
-prev.MouseButton1Click:Connect(function() local n = Music.nextIdx(-1); if n then Music.play(n) end end)
-nxt.MouseButton1Click:Connect(function() local n = Music.nextIdx(1); if n then Music.play(n) end end)
-play.MouseButton1Click:Connect(Music.toggle)
-shuf.MouseButton1Click:Connect(function()
-Music.shuffle = not Music.shuffle
-shuf.TextColor3 = Music.shuffle and MUSIC_GREEN or T.text
-end)
-rep.MouseButton1Click:Connect(function()
-local order = { ["Выкл"] = "Все", ["Все"] = "Один", ["Один"] = "Выкл" }
-Music.repeatMode = order[Music.repeatMode]
-rep.Text = Music.repeatMode == "Один" and "↻1" or "↻"
-rep.TextColor3 = Music.repeatMode == "Выкл" and T.text or MUSIC_GREEN
-end)
-Music.ui = { title = title, artist = artist, status = status, play = play, fill = fill, cur = cur, dur = dur, coverGrad = coverGrad }
-end
-Slider(SpotifyPage, "Громкость", "musicVol", 0, 100, 1, "%", function(v) Snd.Volume = v / 100 end)
-Section(SpotifyPage, "Библиотека")
-do
-local f = Card(SpotifyPage, 38)
-local function mk(txt, x0)
-local b = new("TextButton", {
-Position = UDim2.new(x0, x0 == 0 and 6 or 3, 0, 5), Size = UDim2.new(.5, -9, 1, -10), BackgroundColor3 = T.off,
-Text = txt, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = T.text,
-}, f)
-corner(b, 8)
-return b
-end
-local bAll, bFav = mk("Все треки", 0), mk("♥ Избранное", .5)
-local function paint()
-for _, p in ipairs({ { bAll, "Все" }, { bFav, "Избранное" } }) do
-local on = Music.filter == p[2]
-tw(p[1], .2, { BackgroundColor3 = on and MUSIC_GREEN or T.off, TextColor3 = on and Color3.new(0, 0, 0) or T.text })
-end
-end
-bAll.MouseButton1Click:Connect(function() Music.filter = "Все"; paint(); Music.rebuild() end)
-bFav.MouseButton1Click:Connect(function() Music.filter = "Избранное"; paint(); Music.rebuild() end)
-paint()
-end
-do
-local box = Input(SpotifyPage, "Поиск по названию или исполнителю")
-box:GetPropertyChangedSignal("Text"):Connect(function() Music.search = box.Text; Music.rebuild() end)
-end
-local MList = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1 }, SpotifyPage)
-new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, MList)
-Section(SpotifyPage, "Добавить / изменить трек")
-local eName = Input(SpotifyPage, "Название")
-local eArtist = Input(SpotifyPage, "Исполнитель")
-local eSrc = Input(SpotifyPage, "ID (Roblox) или ссылка на .mp3")
-function Music.rebuild()
-for _, c in ipairs(MList:GetChildren()) do
-if c:IsA("Frame") then c:Destroy() end
-end
-local vis = Music.visible()
-if #vis == 0 then
-local f = Card(MList, 34)
-cardLabel(f, Music.filter == "Все" and "Треков нет" or "В избранном пока пусто", -24).TextColor3 = T.sub
-return
-end
-local RED = Color3.fromRGB(255, 80, 110)
-for order, i in ipairs(vis) do
-local t = Music.tracks[i]
-local isCur = Music.idx == i
-local f = Card(MList, 44)
-f.LayoutOrder = order
-local hit = new("TextButton", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "" }, f)
-hit.MouseButton1Click:Connect(function() Music.play(i) end)
-new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 0), Size = UDim2.fromOffset(24, 44),
-Text = isCur and (Music.playing and "♪" or "❚❚") or tostring(order), Font = Enum.Font.GothamBold, TextSize = 12,
-TextColor3 = isCur and MUSIC_GREEN or T.sub,
-}, f)
-new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(38, 5), Size = UDim2.new(1, -120, 0, 18), Text = t.n or "",
-Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = isCur and MUSIC_GREEN or T.text,
-TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-}, f)
-new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(38, 23), Size = UDim2.new(1, -120, 0, 16),
-Text = ((t.s or "") == "" and "нет источника · " or "") .. ((t.a and t.a ~= "") and t.a or "—"),
-Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = T.sub,
-TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-}, f)
-local heart = new("TextButton", {
-AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -8, .5, 0), Size = UDim2.fromOffset(28, 28),
-BackgroundTransparency = 1, Text = t.f and "♥" or "♡", Font = Enum.Font.GothamBold, TextSize = 18,
-TextColor3 = t.f and RED or T.sub,
-}, f)
-heart.MouseButton1Click:Connect(function()
-t.f = not t.f
-Music.save()
-Music.rebuild()
-end)
-local edit = new("TextButton", {
-AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -38, .5, 0), Size = UDim2.fromOffset(28, 28),
-BackgroundTransparency = 1, Text = "✎", Font = Enum.Font.GothamBold, TextSize = 16, TextColor3 = T.sub,
-}, f)
-edit.MouseButton1Click:Connect(function()
-Music.editIdx = i
-eName.Text, eArtist.Text, eSrc.Text = t.n or "", t.a or "", t.s or ""
-Notify("Редактирую: " .. (t.n or ""))
-task.defer(function() SpotifyPage.CanvasPosition = Vector2.new(0, SpotifyPage.AbsoluteCanvasSize.Y) end)
-end)
-end
-end
-Button(SpotifyPage, "Добавить в список", function()
-local n = eName.Text:gsub("^%s+", ""):gsub("%s+$", "")
-if n == "" then Notify("Введи название трека") return end
-table.insert(Music.tracks, { n = n, a = eArtist.Text, s = eSrc.Text, f = false })
-Music.save()
-eName.Text, eArtist.Text, eSrc.Text = "", "", ""
-Music.refresh()
-Notify("Трек добавлен: " .. n)
-end)
-Button(SpotifyPage, "Сохранить изменения выбранного (✎)", function()
-local t = Music.editIdx and Music.tracks[Music.editIdx]
-if not t then Notify("Сначала нажми ✎ у трека") return end
-local n = eName.Text:gsub("^%s+", ""):gsub("%s+$", "")
-if n == "" then Notify("Введи название трека") return end
-t.n, t.a, t.s = n, eArtist.Text, eSrc.Text
-Music.save()
-Music.refresh()
-Notify("Изменения сохранены")
-end)
-Button(SpotifyPage, "Удалить выбранный (✎)", function()
-local i = Music.editIdx
-if not (i and Music.tracks[i]) then Notify("Сначала нажми ✎ у трека") return end
-table.remove(Music.tracks, i)
-if Music.idx == i then
-Music.idx = nil; Music.playing = false; Music.token = Music.token + 1
-pcall(function() Snd:Stop() end)
-elseif Music.idx and Music.idx > i then
-Music.idx = Music.idx - 1
-end
-Music.editIdx = nil
-eName.Text, eArtist.Text, eSrc.Text = "", "", ""
-Music.save()
-Music.refresh()
-Notify("Трек удалён")
-end)
-InfoCard(SpotifyPage, "Источник трека: ID аудио Roblox или прямая ссылка на .mp3 (скачивается и кэшируется, нужны writefile и getcustomasset). «Nuts» уже в избранном с двумя ID: если один закрыт, пробуется следующий. Можно вписать несколько источников через «;». Другие треки: SoundHelix (soundhelix.com).", 96)
-Music.refresh()
-Section(ThemePage, "Тема меню")
-for _, name in ipairs(ThemeOrder) do
-local th = Themes[name]
-local f = Card(ThemePage, 40)
-local lbl = cardLabel(f, (name == S.theme and "• " or "") .. name, -140)
-local cols = { th.bg, th.card, th.off, th.accent, th.g2 }
-for i, c in ipairs(cols) do
-local sw = new("Frame", {
-AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -12 - (#cols - i) * 20, .5, 0),
-Size = UDim2.fromOffset(16, 16), BackgroundColor3 = c,
-}, f)
-sw:SetAttribute("NoTheme", true)
-corner(sw, 8)
-new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = .75, Thickness = 1 }, sw)
-end
-local btn = new("TextButton", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "" }, f)
-btn.MouseButton1Click:Connect(function()
-Theme.apply(name)
-Notify("Тема: " .. name)
-end)
-Theme.cards[name] = lbl
-end
-Section(ThemePage, "Фон")
-Toggle(ThemePage, "Анимированный фон", "bgAnim")
-InfoCard(ThemePage, "Тема меняет цвета меню, иконки и фона. Космическая — мерцающие звёзды, Хэллоуин — оранжевые угли, Сакура — падающие лепестки, Океан — пузырьки.", 62)
-local CONFIG_SKIP = { fly = true }
-local function cleanName(n)
-n = tostring(n or "")
-n = n:gsub('[\\/:%*%?"<>|%.%c]', "")
-n = n:gsub("^%s+", ""):gsub("%s+$", "")
-return string.sub(n, 1, 40)
-end
-local autoRaw = FS.read("autoload.txt")
-if autoRaw then
-autoRaw = autoRaw:gsub("^%s+", ""):gsub("%s+$", "")
-if autoRaw ~= "" then Config.autoName = autoRaw end
-end
-function Config.snapshot()
-local d = {}
-for k, v in pairs(S) do
-if not CONFIG_SKIP[k] then d[k] = v end
-end
-return d
-end
-function Config.list()
-local out = {}
-for _, f in ipairs(FS.list("configs")) do
-local n = string.match(f, "^(.+)%.json$")
-if n then table.insert(out, n) end
-end
-return out
-end
-function Config.updateStatus()
-if Config.statusLbl then
-Config.statusLbl.Text = Config.autoName and ("★ Авто-загрузка: " .. Config.autoName) or "Авто-загрузка выключена"
-end
-end
-function Config.apply(data)
-for k, v in pairs(data) do
-if not CONFIG_SKIP[k] and S[k] ~= nil and type(S[k]) == type(v) and S[k] ~= v then
-if k == "theme" then Theme.apply(v)
-elseif Toggles[k] then Toggles[k](v)
-elseif Sliders[k] then Sliders[k](v)
-elseif Selectors[k] then Selectors[k](v, true)
-else S[k] = v end
-end
-end
-end
-function Config.load(name, silent)
-local raw = FS.read("configs/" .. name .. ".json")
-if not raw then Notify("Конфигурация не найдена") return end
-local ok, data = pcall(function() return HttpService:JSONDecode(raw) end)
-if not ok or type(data) ~= "table" then Notify("Файл конфигурации повреждён") return end
-Config.apply(data)
-if not silent then Notify("Загружена: " .. name) end
-end
-function Config.save(name)
-name = cleanName(name)
-if name == "" then Notify("Введи название конфигурации") return end
-local disk = FS.write("configs/" .. name .. ".json", HttpService:JSONEncode(Config.snapshot()))
-Config.selected = name
-if Config.refresh then Config.refresh() end
-Notify(disk and ("Сохранено: " .. name) or ("Сохранено в памяти (файлы недоступны): " .. name))
-end
-function Config.autoload()
-if Config.autoName then
-Config.load(Config.autoName, true)
-Notify("Авто-загрузка: " .. Config.autoName)
-end
-end
-Section(ConfigPage, "Новая конфигурация")
-local cfgName = Input(ConfigPage, "Название конфигурации")
-Button(ConfigPage, "Сохранить текущие настройки", function()
-Config.save(cfgName.Text)
-cfgName.Text = ""
-end)
-Section(ConfigPage, "Мои конфигурации")
-local CfgList = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1 }, ConfigPage)
-new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, CfgList)
-function Config.refresh()
-for _, c in ipairs(CfgList:GetChildren()) do
-if c:IsA("Frame") then c:Destroy() end
-end
-local names = Config.list()
-if #names == 0 then
-local f = Card(CfgList, 34)
-cardLabel(f, "Пока нет сохранённых конфигураций", -24).TextColor3 = T.sub
-return
-end
-for i, name in ipairs(names) do
-local f = Card(CfgList, 36)
-f.LayoutOrder = i
-if Config.selected == name then
-local st = f:FindFirstChildOfClass("UIStroke")
-if st then st.Color = T.accent; st.Transparency = .15 end
-end
-cardLabel(f, (Config.autoName == name and "★ " or "") .. name, -20)
-local hit = new("TextButton", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "" }, f)
-hit.MouseButton1Click:Connect(function()
-Config.selected = name
-Config.refresh()
-end)
-end
-end
-Section(ConfigPage, "Выбранная конфигурация")
-Button(ConfigPage, "Загрузить", function()
-if Config.selected then Config.load(Config.selected) else Notify("Выбери конфигурацию в списке") end
-end)
-Button(ConfigPage, "Перезаписать текущими настройками", function()
-if Config.selected then Config.save(Config.selected) else Notify("Выбери конфигурацию в списке") end
-end)
-Button(ConfigPage, "Удалить", function()
-if not Config.selected then Notify("Выбери конфигурацию в списке") return end
-FS.delete("configs/" .. Config.selected .. ".json")
-if Config.autoName == Config.selected then
-Config.autoName = nil
-FS.delete("autoload.txt")
-end
-Notify("Удалено: " .. Config.selected)
-Config.selected = nil
-Config.refresh()
-Config.updateStatus()
-end)
-Section(ConfigPage, "Авто-загрузка")
-Config.statusLbl = InfoCard(ConfigPage, "", 34)
-Button(ConfigPage, "★ Авто-загрузка выбранной", function()
-if not Config.selected then Notify("Выбери конфигурацию в списке") return end
-Config.autoName = Config.selected
-FS.write("autoload.txt", Config.selected)
-Config.refresh()
-Config.updateStatus()
-Notify("Будет загружаться при запуске: " .. Config.selected)
-end)
-Button(ConfigPage, "Отключить авто-загрузку", function()
-Config.autoName = nil
-FS.delete("autoload.txt")
-Config.refresh()
-Config.updateStatus()
-Notify("Авто-загрузка выключена")
-end)
-InfoCard(ConfigPage, "Конфигурации лежат в папке CozyHub/configs твоего эксплойта. Если файлы недоступны, они хранятся в памяти до перезахода.", 62)
-Config.refresh()
-Config.updateStatus()
-end -- do (Spotify / Темы / Конфиги)
-Section(SetPage, "Управление")
-InfoCard(SetPage, "RightShift или тап по иконке — открыть/закрыть меню.\nДвойной тап по иконке — закрепить её на месте (повторный двойной тап — открепить и снова двигать).", 74)
-local function Unload()
-for _, c in ipairs(Conns) do pcall(function() c:Disconnect() end) end
-S.fullbright, S.nofog, S.speed, S.jump, S.fly, S.hitbox = false, false, false, false, false, false
-pcall(hitboxRestore)
-pcall(function() Snd:Stop(); Snd:Destroy() end)
-pcall(playerStep)
-flyStop()
-pcall(Shaders.reset, true)
-revertFps()
-restoreLight()
-Camera.FieldOfView = origFov
-for plr in pairs(espObjs) do destroyESP(plr) end
-Halo.clear(); setTrail(false); setGlow(false)
-if Gui then Gui:Destroy() end
-if getgenv then getgenv().CozyHubUnload = nil end
-end
-if getgenv then getgenv().CozyHubUnload = Unload end
-Section(SetPage, "Скрипт")
-Button(SetPage, "Выгрузить скрипт", function()
-setMenu(false)
-task.wait(.3)
-Unload()
-end)
-local function confettiBurst()
-local vp = Camera.ViewportSize
-local cols = {
-Color3.fromRGB(255, 80, 100), Color3.fromRGB(255, 200, 60), Color3.fromRGB(90, 220, 140),
-Color3.fromRGB(90, 170, 255), Color3.fromRGB(200, 120, 255), Color3.fromRGB(255, 255, 255),
-}
-local layer = new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 60, Active = false }, Gui)
-local ps = {}
-for side = 0, 1 do
-local ox = side == 0 and 0 or vp.X
-for _ = 1, 45 do
-local ang = math.rad(side == 0 and math.random(-80, -35) or math.random(-145, -100))
-local sp = math.random(500, 1100)
-local w, h = math.random(6, 11), math.random(4, 8)
-local f = new("Frame", {
-AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(w, h), BorderSizePixel = 0,
-BackgroundColor3 = cols[math.random(#cols)], Rotation = math.random(0, 360), ZIndex = 61,
-}, layer)
-ps[#ps + 1] = {
-f = f, x = ox, y = vp.Y + 10, vx = math.cos(ang) * sp, vy = math.sin(ang) * sp,
-vr = math.random(-500, 500), sway = math.random() * 6, life = 2.6 + math.random() * 1.2,
-}
-end
-end
-local t0 = os.clock()
-local conn
-conn = RunService.RenderStepped:Connect(function(dt)
-local el = os.clock() - t0
-for _, p in ipairs(ps) do
-p.vy = p.vy + 900 * dt
-p.vx = p.vx * (1 - math.min(dt * 1.2, 1))
-p.vy = p.vy * (1 - math.min(dt * .6, 1))
-p.x = p.x + (p.vx + math.sin(el * 4 + p.sway) * 40) * dt
-p.y = p.y + p.vy * dt
-p.f.Position = UDim2.fromOffset(p.x, p.y)
-p.f.Rotation = p.f.Rotation + p.vr * dt
-p.f.BackgroundTransparency = math.clamp((el - (p.life - .8)) / .8, 0, 1)
-end
-if el > 4 then
-conn:Disconnect()
-layer:Destroy()
-end
-end)
-table.insert(Conns, conn)
-end
-local function runKeyScreen(onSuccess)
-local blocker = new("Frame", {
-Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1,
-Active = true, ZIndex = 50,
-}, Gui)
-new("TextButton", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 0), Text = "", Modal = true }, blocker)
-tw(blocker, .5, { BackgroundTransparency = .12 })
-local bgFlakes, bgOrbs = {}, {}
-local vp0 = Camera.ViewportSize
-for i = 1, 3 do
-local sz = math.random(260, 420)
-local o = new("Frame", {
-AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(sz, sz), BackgroundColor3 = Color3.new(1, 1, 1),
-BackgroundTransparency = .94, BorderSizePixel = 0, ZIndex = 50,
-}, blocker)
-corner(o, 999)
-bgOrbs[i] = { f = o, ph = math.random() * 6, sx = .15 + i * .3, sy = .3 + (i % 2) * .4 }
-end
-for i = 1, 70 do
-local sz = math.random(2, 7)
-local f = new("Frame", {
-Size = UDim2.fromOffset(sz, sz), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
-BackgroundTransparency = .1 + (7 - sz) * .08, ZIndex = 50,
-}, blocker)
-corner(f, 999)
-bgFlakes[i] = {
-f = f, x = math.random() * vp0.X, y = math.random() * vp0.Y, sp = 25 + sz * 9 + math.random() * 20,
-sw = math.random() * 6, amp = 12 + math.random() * 22,
-}
-end
-local snowConn = RunService.RenderStepped:Connect(function(dt)
-local vp = Camera.ViewportSize
-local t = os.clock()
-for _, p in ipairs(bgFlakes) do
-p.y = p.y + p.sp * dt
-if p.y > vp.Y + 10 then p.y = -10; p.x = math.random() * vp.X end
-p.f.Position = UDim2.fromOffset(p.x + math.sin(t * .9 + p.sw) * p.amp, p.y)
-end
-for _, o in ipairs(bgOrbs) do
-o.f.Position = UDim2.fromOffset(
-vp.X * o.sx + math.sin(t * .25 + o.ph) * 80, vp.Y * o.sy + math.cos(t * .2 + o.ph) * 60)
-o.f.BackgroundTransparency = .93 + math.sin(t * .6 + o.ph) * .03
-end
-end)
-table.insert(Conns, snowConn)
-local card = new("CanvasGroup", {
-AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(340, 216),
-BackgroundColor3 = Color3.fromRGB(8, 8, 10), GroupTransparency = 1, ZIndex = 51,
-}, blocker)
-corner(card, 16)
-local cs = new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 1.6 }, card)
-local cg = new("UIGradient", {
-Color = ColorSequence.new({ CSK(0, Color3.new(1, 1, 1)), CSK(.5, Color3.fromRGB(50, 50, 56)), CSK(1, Color3.new(1, 1, 1)) }),
-}, cs)
-local cscale = new("UIScale", { Scale = .8 }, card)
-tw(cscale, .5, { Scale = 1 }, Enum.EasingStyle.Back)
-tw(card, .4, { GroupTransparency = 0 })
-local spin = RunService.RenderStepped:Connect(function() cg.Rotation = (os.clock() * 90) % 360 end)
-table.insert(Conns, spin)
-new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 14), Size = UDim2.new(1, 0, 0, 30),
-Text = "Cozy Hub", Font = Enum.Font.GothamBlack, TextSize = 24, TextColor3 = WHITE,
-}, card)
-new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 46), Size = UDim2.new(1, 0, 0, 18),
-Text = "Введи ключ, чтобы войти", Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = T.sub,
-}, card)
-local box = new("TextBox", {
-Position = UDim2.fromOffset(24, 78), Size = UDim2.new(1, -48, 0, 40), BackgroundColor3 = Color3.fromRGB(22, 22, 26),
-Text = "", PlaceholderText = "Ключ", PlaceholderColor3 = T.sub, TextColor3 = WHITE, Font = Enum.Font.GothamBold,
-TextSize = 18, ClearTextOnFocus = true,
-}, card)
-corner(box, 10)
-local bs = new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = .8, Thickness = 1 }, box)
-box.Focused:Connect(function() tw(bs, .2, { Transparency = .2 }) end)
-box.FocusLost:Connect(function() tw(bs, .2, { Transparency = .8 }) end)
-local btn = new("TextButton", {
-Position = UDim2.fromOffset(24, 130), Size = UDim2.new(1, -48, 0, 40), BackgroundColor3 = WHITE,
-Text = "Войти", Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = Color3.new(0, 0, 0),
-}, card)
-corner(btn, 10)
-btn.MouseEnter:Connect(function() tw(btn, .15, { BackgroundColor3 = Color3.fromRGB(200, 200, 205) }) end)
-btn.MouseLeave:Connect(function() tw(btn, .15, { BackgroundColor3 = WHITE }) end)
-local status = new("TextLabel", {
-BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 180), Size = UDim2.new(1, 0, 0, 22),
-Text = "", Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = WHITE,
-}, card)
-local busy = false
-local function submit()
-if busy then return end
-busy = true
-local txt = (box.Text or ""):gsub("%s+", "")
-if txt == KEY then
-status.Text = "Доступ разрешён"
-pcall(confettiBurst)
-task.wait(.4)
-tw(cscale, .3, { Scale = 1.1 }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-tw(card, .3, { GroupTransparency = 1 })
-tw(blocker, .4, { BackgroundTransparency = 1 })
-task.wait(.45)
-spin:Disconnect()
-snowConn:Disconnect()
-blocker:Destroy()
-onSuccess()
-else
-status.Text = "Неверный ключ. Выход..."
-status.TextColor3 = Color3.fromRGB(255, 90, 100)
-for n = 1, 8 do
-tw(card, .05, { Position = UDim2.new(.5, (n % 2 == 0) and 12 or -12, .5, 0) })
-task.wait(.05)
-end
-tw(card, .1, { Position = UDim2.fromScale(.5, .5) })
-task.wait(1)
-local ok = pcall(function() LP:Kick("Неверный ключ") end)
-if not ok then pcall(function() game:Shutdown() end) end
-end
-end
-btn.MouseButton1Click:Connect(submit)
-box.FocusLost:Connect(function(enter) if enter then submit() end end)
-end
-local function runWelcome(done)
-local bl = new("Frame", {
-Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = .12,
-Active = true, ZIndex = 50,
-}, Gui)
-local sc = new("UIScale", { Scale = .85 }, bl)
-local top = new("TextLabel", {
-AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .45), Size = UDim2.fromOffset(400, 28),
-BackgroundTransparency = 1, Text = "Добро пожаловать в", Font = Enum.Font.GothamMedium, TextSize = 20,
-TextColor3 = WHITE, TextTransparency = 1, ZIndex = 51,
-}, bl)
-local big = new("TextLabel", {
-AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .53), Size = UDim2.fromOffset(400, 60),
-BackgroundTransparency = 1, Text = "Cozy Hub", Font = Enum.Font.GothamBlack, TextSize = 46,
-TextColor3 = WHITE, TextTransparency = 1, ZIndex = 51,
-}, bl)
-local line = new("Frame", {
-AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .6), Size = UDim2.fromOffset(0, 2),
-BackgroundColor3 = WHITE, BorderSizePixel = 0, ZIndex = 51,
-}, bl)
-corner(line, 2)
-tw(sc, .7, { Scale = 1 }, Enum.EasingStyle.Back)
-tw(top, .5, { TextTransparency = 0 })
-task.wait(.25)
-tw(big, .6, { TextTransparency = 0 })
-tw(line, .8, { Size = UDim2.fromOffset(220, 2) })
-task.wait(1.7)
-tw(top, .4, { TextTransparency = 1 })
-tw(big, .4, { TextTransparency = 1 })
-tw(line, .4, { Size = UDim2.fromOffset(0, 2) })
-tw(bl, .5, { BackgroundTransparency = 1 })
-task.wait(.55)
-bl:Destroy()
-done()
-end
-selectTab(1, true)
-runKeyScreen(function()
-runWelcome(function()
-unlocked = true
-Fab.Visible = true
-Fab.Size = UDim2.fromOffset(0, 0)
-tw(Fab, .5, { Size = UDim2.fromOffset(FAB, FAB) }, Enum.EasingStyle.Back)
-setMenu(true)
-task.delay(.9, function() pcall(Config.autoload) end)
-end)
-end)
+-- Cozy Hub (упакован). Просто запусти.
+local A=[==[!#$%&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[^_abcdefghijklmnopqrstuvwxyz{|}~]==]
+local D=[==[
+!P!P#$#$!-!i#9#D#C!C!n#?#,!C#@!^!Q!X!C!C#F%*!j#/#6#>#+!C!R!C!~#/#8#9!-$A#g$A$,$B#X$B#Q!C$A$-$A$%$A$.$B#Y%F$B#L$B#K%J%C$!%C$0%L#J%F%D%X$.%H$A$/$A$*!C!q!k#!!Q%:#k
+%M$A$+$B#J$B#U%M$B#V!R$A$($A#}%l%n%p%r#V%C%E%G%I#X!_!C!x#3#1#2#>!y#2#3#0#>%C$)%=$A$)!C%k%y$0%T%_&4%l%_%^$+%F%h$A#a$A$!&A$*%^%a%c&:$A&<&P&>&7&@%a%[&C$%&(%v%x%z%W
+%G%U$)%}%3%C$/%k%m&a&R&d%N#V&E#q&6%y$*&Z&C%a$,%L#K&S$-%|#R&7!C!K%O%n%X$$%H%J%Q&@%[%a%U&C#}!L&?&x&8&R$%(&%G&C%>%@#Q%x%k%G%>%~&H&S&I(;&^()&X!C!E$A#e$A$#(&%a$+!E%h
+#&#&!-#6#9#-#+#6%d%f!C!c(K!U(f!U!E(X(Z(^!C!v#6#+#C#/#<#=%*(u(c!C#1#+#7#/!_!m#/&.(r#@#3#-#/!K!E(n(p(r#=!E!L(j([(_!x#?#8!y)$)&#/(u(d(y({(})!)8#<)%)()*)5)7)9)()0)2
+(l!{!o!y(v)Q(w)>(|(~)#)C):)*!{#=(r!o#8#:#?)W)D#/)K(Y)3!C!z#A#/%7)B)f)S(z)U)A)I))!E)l)n)H)X)J)1)i(l!r&+&-#3#8#1)Q)=)s)@)e)Y!E*$&,#>*(#1)h(k(_$y#<#/!m#?#3)R*,)?)V
+)p*0*:*<*>*7)j!n#>#>#:*D)(%**A)t*/)E!E*K*M*O)g)~*8!C!y#9)6#.*Y)r*B)u)|)w*a*c*Y*I*#!v*+(m(o(q(s!Q!r*8),*t)L*9)s#<%2(d#A#9#<#5#=#:#+)(!Q!i#?#<*;#8#>!i*}#+!-#:)3#6
+!K#0)6#-*4#9#8!K)1&1(x)!#1%7#@!C#+#8#.+E#>+G#8#@+B+-$z#C$~#,!{#8(Y#++M#>#2%7+N+P+R!L+T${+W+Y+[#.+B!C%7#.!-+p*[)j)P(d#E!-#+#3#7(w#0(^)^!O+J+{!n#9#6+M(d#>#<#?#/,$
++z#7!z#/(z(w,-,/,1+{!}(^(_,,,.,0,%#7&/#9#A!l#9+I,?,9+y+{!v#+#<)#,>(K$A#_&A&x%a&I#}!E,:#7,G,I!C!T!U!S,^!y#7#9#9+a(w!V!X,^!v*;,+!C,f+r+)+},!,A#/+)!h#9#B,7,@,$,{#:
+!t)s-#,9+o+)!n,5%0#2-+,z+)!z*~)(#<,x#6,#,v#:!i#2(z(t,J-4#:,4(z$y,R+~-;-D-H+%(w(L#g(&#}%O(*#U%b,[--#:!j#3#=&3(d!T!S-d!O!--@(Y-:,#!C,-+z-I,y,$)^#6#0!m(Y#A-j,0!-+<
+#6#6#,#<*%-a!C-J-k%8#0#9**(d.&,A.*,b..,$.0!|(l(d!^,u+))n,s.2!C.:#/#..5,R!X,f!C#4#?#7#:-x,$.G.I.B(w-c.E*(#0!p.H.J.--p-z#6$|.X-K.3.[!y#:.;(w!Y,u#0#:#=!s#9#.);(d(L
+#^%p&@$,-X#=#2,E!l.k.K-=!y#>#C#6.p,S#[&A%m#K-X-&!n*N/#/%-O$A#l,V%_-T(1/--5-7(r!v#9-B,S#n%^&5$($B#M/:-E/<#</!/$/&(L#h&T%[&d#Y,[-=!g+0,E/@.=-&/W#<,E!g#6#A(p/Z-p+J
+/X#A!x+^#3#?/@!U![-f-&!m.y-_.K-Y/u/?&./1/N/4(&/D-R&@$)/U.x+^/=*;)^.$.r.t(;.w-@.o#<)a.$.Q-f&0#>#,,~/x0;0=#B!y#3#D/&!W,$0@,~-6+K/@!Z.E0I#B-F+|-C0H#30<,~!n,R,8-y0=
+#.+V0V0A/x0_#C0C0E(w!Z,$0f0K#80M,o!C0f0Y-3-f+O.$.=0w/L/2.q%;,V%s$B#P%_-X0w-M-90}#o%X%E,Z,$0z%//3#g%T0#1$%X%>/G11#1#>/l*)/&!V-e-l1=,a(w!U.D0v1=0R0u1D#>$~,s0[1<&.
+0D/&091N.d.f-b-e!--_*;#>#--2._-k1a)!1d.O(d!Z0q1h1c#2!~.P1C1o1d.m.o-O!W!_!V/U#B1e.%/h1~0{/~-Q&a(%#L-X1~1*/3/)(A.t$*2-#20h1V.E1~!z&0#-#51G,$1~!m#+.W!C0G!C1~/c#:-@
+1s,u2%#:*((w29#2!u#0#01r(d2R2T#0#!2Q2@2S)d#6*(/&1R2G#2!j,k/x1~!j#C#82l#2!n0V.}+a#/({/3#t$B#[(&(.!P$A#~19(?/T0l#1!g#8+{1M-&!V,s00-V02,$#7/o)&!|,)(w1I!-#G*{!C)6)i
+#5.@-x3?.j#=!r#/#@132X3?&/0+(s(w#E+J+>#33K(w3,#6.3-!+w#G-q#+3K,s3Y11!S2Q!C3>*!(_2;2w/&3S#.#31+!C!P!T11-w-b,$([#<#./@#E#G3j3?!z.+#1/%#=,$!y2d054,*_%/#/+>+%4!3a!C
+4#,$4#3?$y#80o3R3k*^+<#83U+@!C#-+@+A#=&+.3#8+t(l#-(w4L#1!_4>#844#>+;4O!-%1#,/%!Q*()^,P!K4W41#-)11b+/2p#-+r+L3?!}!n!o!z!k(w1*!V!Q#0/a#7!x!m!h!K!U!W0q5(5*5)4P3m3R
+!-#,**(v(d4z4|4~5#5%/r!C5;-c!L-f4L1x*Q!C564}#95!5$!K!T2F5K,$!T!Z5?!-3|+M5C5E585I(f,$5Y!C!U!Y5Q.y3K-94y,)+%4{5F5H5%!W.E5m,$!W5a0v#/#B&35C4t4v!k-f++)(+2(w5x4w5@%!
+545D5g#<5i5W5%!T1I,c606/![5Q#92U6(5V5G59!K!X5;6=,$!Y5r3=4=!y!q,$!t6E5f(Y/K#/#;,/4E#/!q#/#C#:#9*(#>!Q4X#A6G.H#,(r)86N%7)(6R6T6V+26Y#/#A3F+=+?2p6Z!K#-(o#=41#:/a.k
+,$+*+1#>5.!C#9(w)a-_+K+,6r6t#+6v+C#07#!_!o#=!g)**=#3!u#,#44Y)0-l+b2p#9!Q,}3}6b1U!v#3#B3L,t+o4r+D#97274)*,45u!h)d#>+@7=2v7@!Q!g)d#97U*L+@2/1f);+p-z-N#5,$+I2P+*3s
+#=!K6x#9.|-N4#(3#.7$#9#$#5#&(w+I7i+D6|%7&37Z7#!Q,N6}(w8(5~7i4m#<7@4q+q3l.%6o#34G4I85(r!K#9,$#<(3846q6l)Z!o*:4X#<-X3S8K(r/l3r/o(w!{-[#76k#A!K.E8D3j,$#9(37i894D4F
+2p#>8Z8B-l6{6y41-_/M,$3r8D3?,-(w)y)o)v4V*;#+#>))8l8y#8)a.*8Y!K#>-q/}7#-9!k#8.H!Q!k7-*52&!Q!w*>+28s3s9/!C9193954L*)-[*;8h!Q!u)d5?!C7t.k)1,-!_*y+B!-8F-l#<873?773X
+8H!E!y#-*;%7778N!--)2x.q$y+i%!-X!x,{)!!u)7+*#A2p7g,$!o#1%8*;777&)!0u!-##)a.o#B!h#/-@)%-N(d9A8X:&+L5t:+:-8<#<!Q0C4b*5,$-[+)*s!u7D3t!^:E-f#G)17z+7+9+;8;+@+n+D#=2o
++J+L.>2o!Q7t9!+>#)#1*>7>+c:R#8:X/a:Z#>:^*>!K778d:U+s3?#92>(d+8,=:M4E6p+n778-,O8)(w!K+G+a:a+K+M;$#2:k!L(3-N*F9[:p+D%8&3:r9?;4!C:{8.:~8+;::}5~(d!r!v!_,<0V,G#<-?#3
+,*)**y(r9f:n+q8e*^!k!y!v!r)-3t6r!E!l*~({8N!C9i/N;T!v-X!h++#5#1/a*c0n+);?#-.^,c4-1U8U8W!U575G9b(^))3w,c(348:m3?!|&+;W*t9^8Z;[;_)g4;;c-*.q<)*6,$;i2=;l*b+L;o81;r.P
+;u0i(d8V+{;y5j;|/%5J5N9L<)4L4b/&..8a;9*>7!<6;^)s41<6!m*~3~4A4;3>:J8f:N2p#@#07s/?-q1U,14E.y#<8C,k7!70(d;Z<X;a<23+1d+%/>6W(w7)<q,$/>4L6p80<l*_;v(d4L0E<8;j<;*c4z6J
+5h9*.E=;<$,$<6<+(r7!.,!C;Z)N<^/m8);b!x,k8~8<9w!C:g<S#09P#+<P4d0o(r4Z<W<041=S!a-l=U4c4e=Y!K<[<_41#1)17i<i!K<E#7<G4~<I))=<,$=q;y6r<!.E!Q5(,$!S<M4Y+%=z8H=w!C.8)1=o
+=y;z,C)3=v<L=x;x9*=|,$=~2F>$=>>&#<>)8Z.E!T9L!U0N>.<j>0<H>38[>#9L>06r=~>#5N>N>>45>@=:>U,t>H=p>7>K;}<K>[>6<F9*>R,t>T>e!C!|>?>A>d>=,c![>$9Y<f:x=N;c,k&1#C9+5t6~3F<-
+)*<y<149!-<|<q=!;@>m>o>h0q>D=(/?0V>y<D>7>Q0q>C5p>=!-27;w>g5j2Z0.5&>t,$!V!W9L<9;k;m+L=7(d!z!Q52=3<:?O#.<>;q;s<!:3:)2L:G,$<&8>8L+;5N>u89/w<w9_)N/!/a3C;b7f)k!Q5|8)
+,$?Z+1<@3z)k2<#54X6v.P=~=R7!,R;Z7S#>;W6a#69g?M=5<=*~0o<??^<B/&>J=t>L<!?4)k?!,7?!?z?!?{6e@:!-,G?/:1!Q@L6X!m,k-@#7!s.@/n#7@F5u?A-b!V@Z+36*!V8x!Q9!5u,$?a5t1s3w3=.3
+9P8Z#0>:@a49(m?6=+?9>g?;>S;t3u5(?L=4?X@H4E;s!Q!S%)48@N9C97/}7B;j@q!K-_@t<2A(?}!C!Q!W3j!L=b8j!K3ZA<@u3S@.A:;s3h:H4_7-#5!Q.o*s5&.3<g9TAB@sAE<2=)?74G@z=r?2@}<!5mA$
+?W<<?Y@7;p?|?^A?4_8ZA7AY@vAI.PA?AA8ZAD!QAF@B5uAu-bAo%1#=AO/e0V!KA{!XA@.%!_%.1a#9>}=m+LB588*^#,7-#/=u(w#78~#2!Q7,.I4h+5!Q<)6l6U,P27!Q2^%45q=}!Y<L3?!s+z=O;Z+4+Q7-
+<^*b#:9g;d-OBU*(-X?,<~6i.$>n>W>p%(>:B-?5=*?8!C@=;{>LBoA<Bq?@=/Bu>a4~?E)!6<5o!C!V.hAg?NAi?Q?v?U;9;m/I0L@9<A>m-^#3<P.}<%<U5R+%?hBe#85N?K!-=E)O,-:r?)8O6*6!4u6$)kAk
+C6(d!QBR@!)&@$,{/@!TA{<SCB7!CBB=?n<.?p>3;bCe0rB;B=!MA<![A-,$Cb3?!h!m?%</)s;bBc.qCv-X@^B~?C@>>c@@C,@5#.C/56={>k@A@k3^7K48Ct89Cv=G3e?o!oD9#3=I4;$xCM556*6c6O7*8H8O
+6E>M6)6K6,6:5I2F2F5a9L!iDJBy695k6<!U,$!XD[!CC+DTDJ<!DX6;DQ6@;-A?-f=K%1@yC),u48Cv7!!y)m#/2D<x<09gBh#<?.Bk?1@|Bz9LD#>P>*CD>C!Q5;>rDn=MA_>s-f@4?XD-@d>8D09LD22_@o!C
+DtCFD;D=D?AtCR?[(w!t6_6b6MDF#/9*3S6H!qDK@AERB+0q!Q!^!V9LEVD)A?<SDv)n#:7!!j/o.$4<<e*^85=C1?7z8X6r5P7j-9*??~1B!CEl)j#=#D(wEn!_!t?!07#/+G#<AS2E<uCx?(CjB}Bv#7C$4ZE}
+-q#DD*E7@d=86+E:@~@AE6AiB!A<CVE=2X<SEA?g8@AXCEEh-_#$#38!+w-z+}2@F!*)F$?!EJ#76aF+9L;sF#F%5uF^Fa+B-q2DFeF[EKF+A+<!A+5--f#.3tFmFgFo!K!PFq>:!S@A2JFX4UFf#>Fh8@.E!Y=~
+643xG%FZFyF_8@<!E[:G9Y;R)j({92!u.e=O..6n>x4G52/!Dx!K#.?#;32k!KG<#?G>+c;(!CCBBGC9<P;.-9;8!y?T3*3,+|8+9VG:(l.$/?BB3B9TD8<_!QE1Dp9+!CCo5>!C!HC).h!-Gl+^9I2U0.(wBl7W
+>X6rB?+a!Q9DGqCoB,(3H-1H35B@BB/?H,A<>FH/H7B-?@Dw#:8-@xBtF3=u!KHD&3%45aGu<#Gr,cCU3uAs%()1.*-9#)8s!C2P#37p(s!KFO6~Ez%9#.!Q;sHc$|!NEzH*.JCoGIHK3n({AP3s!-HcD3Ht!CHh
+HcFvHKGI!-+DHf!C!b3uA+%)8+I!-bI&=bHv(dH(BA@7Eq9T%/)^H~Hd!C!dHLA,:b2pI*I%A,I-!QD3I0!QI25G+n7iHc#0H?BsE3HB>LHt8sHd:I4|A3Ah;nEGAm(w%(%)HhB,HKIEH+&3Hl@g-wCoHoEO8jHw
+Hi2JB7>v*^4(Dy9_F0<2E)?:8H>9>j2E!UF:C.F<?RH*#3.o?VC-IYC5EHCT,nCaBV)1@-?!@0%/@3A%FCIZ@IC7A[DpF3F55JCV>rIz@{E+5^1C=|5Q@.-O9l$|+W-X@P(w@N@P!Q@R+a(z,},*@bD#5O@bC/?S
+@h9,A}#>!~/c&+#8G<.$@N@.Jk2d9{Jo*v#/&2?d)k7uJ59_@.J8@2D@FBJ.@8J0@~J@HAC!5GJC1WJ#@;?BAb6r.E,e?=>e!-JN.q%.%0%2%4%6%8JS+@Jp928XJWJY@TJaB},dJdJ&?v#=%!@bJsJmJoJUKG!Q
+JrJlJu8)JwJyE?Iu7!!i(Y)^!h#>BWJ~?!7c7W#8D|<pBi=#(dH#>(F?HPBrA^=OE*8Z<!3v=}?<E(F2K.F4G}C%5_5Z6BK&?PKP?S5S@b-O!~KD@MKYKI@SJ[,)#.KL<C,c@u@.Je@g@EKdJ|C?8?F+Kg/?#/Kj
+CC5<)1LNKiKk!Q.m/o#/919!#<4V4J4Y:w8h+nABLULPKk>:6/<2L1D,L3?w#-5}JhLEKPD.JI=<Eb:pLiLQLX*b)^3I3c(|4WLd8g:y(3LhKhLjLR!QLm@vLoLFL5JiLFJgL{B63NJ*/&;Z9b/a-|*5Ix?*K,IO
+L*JC5nK2=.LBK~ET/q>k!P!WMLM5Lq5A,ALoFDA=,o?@9c,)#6;i#<2;CX@%/@.EBY#@7-JGK58H9L7_7WH()&MlMnB}@NMs5G=M#-BL#!4-MbMC9E3s4YBt@NMAMc*59FN*+@BMJzCtCG,N#.3r*);bN7N9#1Iu
+K4>Y,c>rN<*5,}7d0SD$ErJI5>=(+^N=3I&2N@K6?j9LND*)&**3NRNK>$EcM>J}Cg!o*$-_<+*b#>N;NN*5NZ>BDj4-+%#>:B05KX93*a,PNs(r*v(pNhNy-9480C.o7!:()&8~:/=DIwD{AZH@MHD%K/L,4ZG,
+JFL)O2L+#0?F@u(fJ$=6KP6#5zC8<O0|2#-KJ3*()1FKF+O(([H$5Z:I%989Fv#+#1#1:=.>%1,P=)9-,O#>)a)c#>K;7u!QOd)d:+(y#8Lb4?M*AU#37/HV!Q)[)_)b)d!z6T.p:0KYOw06Oy#>O{.eM!LZKo+@
+!T9?#3Ov4fOjP&O|(cO~93P#P3P(EO4(#?1dI=Hs*~OWOY7(O^=-PEOcP%1MGTMGLRP0PMG9M<4I4?=p)OOiP%-?+K+GL@8:GC+AOsH}70OUPC*):T+M!KP0P9P%P;P69@P!P2PnO|P*)^.m3KKW-NPlPsOePo!c
+P78XPmP~PuP=1dM-7?3?,sPOO02p!POZObP3!-PLQ1K4>pPH=)!Q!~::>3OaPF#=Q>G|O;:#HxQ>QB#>Q=%g=uQKQMQFG~QI#!Ir:pPS+A?pPWOe91.oP^M+=NPkOtP|OxQ(.ePp@NQ&OzPuLYKi7VP-P/P1QhQn
+QjQ#PqP8P}QwP<*bP?I)PBOXPh7g7L;QM<Ge(_+*+G414a41B:3Q3_<c<cGB8h.>43+>!z=UPk#.#B,$4e%1+2HQP{6{HV2pHX+zHZR/,{7yOS*^++*43W(dEwRWRAPd3TRU);7Z+7GUOE2f,@R[;8RD+K8*Q-H>
+PMQ:>1K0!V5;!YCEAB#:A8@vRoAa=sO3QG4Z!TRsD^J#Ao7iI5#/Rc<NC:OFGA7iABR2FQ#&>:Da3SMZJ=A)=$3U3WGRM29?<!LvDMS=R_Pi?vM:-N?SKR%#AL7iHRHVDaR4RJHVHY7rR4#=RQAp!KR4S70q3SMo
+R}O:O<RC!UPpJ*-!GR,e9?N^A.KYA0*)98?MQV4r>wR:R>#,!K#8)s7!Sl(w!FRO(tHh!T3?%#Cf7RKnQrKqD@SeF?=;?I5rE@J;O@SEJ(M7S:J/I[3zK;@C<w)s,$JTQ$@OKEJXL=@U@W.HLA1V2FSD5h@fSM,$
+Ng)dN~(wSlJzO$#/OKC@8@#,,$64T-,OF/O.@vD}E!H!E$JIKz@wINK}I{Nn3u5;ByO7MNMIO4!K@u>rMVT=?v?x5~48#,TeLLS_,OOQ3?ROCxN-N&#1ME+xR{NISfRr6>MLT5D/3u5K5=,$!P!YMUT;@6TAJ>TC
+U8Md,OMg2=Mi,mN$MBUR06B?+GC/OB,$Mw#=UCMq-fM{Mu#-UdD#Mz7aUjN!=>GVS0.YD5J4EBNcNe@/N|)dNjN8NlAaNAT9NwNr:CNu8XV(N~N{#CN}V*48RONb8INV<7RzNkNW.#NmDKT9V7NFMtV=G,==9MOV
+Td+7VG#=FQRAS6=c#,VKSlVNSYVL#BFSVF+G0l0l,O51PvLPT2!TKgCXOo4X+>LeM,R;/%R=R?Sl;P4l)!4nVXS,R-P_R:)8LfRO11?!V5)xJ7=UJ9T4O8MpL!UHJE5ZU(ULAjUNS<?~K<OZ.!*)!Q#?#:.eF+Jg
+5QTIQzKHTLKJL>J_JiJbSC?!LFTXJiKUK_L:93K[JtJnKaNP9,E?V4Is)jQc4G+43}7sVG0HF.T/Cy<z@vUfW+3uW-!C#2O?L2U*L4,OP^T@K)TBH7<SWYOL?iLSUx8I?qCJ?tDB!CUbCQW2A;EYLD@#UVB#48=S
+-zVaL^(rVgOqPaLg@rLlScT:IXWrTVJ(5c(rM;#.HQVaM%3KX:ViW^+AM-X>A<M3S9W0M6WuXHVr#>Vt#0WZ(lXP4HWuK#W~Jg,$#AX[VtJ65uK#J:XBW1WxUOK+Q9R|RqU$KN>lWk>d-w-N!P0N>k??W5Xi!CW@
+JVWCTN@V8S@YWGKMLDWJLqY*WRKV:~TJY9WO6XWVJzX5VwXd9(#9Wa+mV|-l@EWoWf5DWuWcVYYL9UVs85O,<.K!W%K$?*WwAlXu<!U=JBXzDaT~@<Ty>d!P>!@~>r@.!}*~W;3D0TTD5u@D@iY+KEV+TK6jWDY2
+@.JbDaTU6+TWKSWMK^WTWP8XY=Z-Y?JxWWX4IrSz=+P3YP,A#:(o)(.y,*=A?$55YOYI?J7!0dWg@.,}#BXqJ-UMXtW3XvTwRp?DYe>ZX}L#YlJLL6.q/U),Z>L?(rW5Z<++:,Zd<r*rZhZ?05WKZ*Z&@eJ(Y*Y,
+L;Y.JZTOY1-fZ#Y4KTZ,KWY<?!WNZ1KbJhKg,5Mf?!9s,G#-8T9xE?X59V0A.3Xb(_Xd4(OW<JYIY*3C#C3{U/ZBYNWbZE5a5RXfYYXhV~3?#=3yYV?&Tn+xTpBjTrBmKyBqTvK|RpUDL$BpZWW)U?U$C(,eWqLp
+Ws!Q66@s[5U0?h[QNT3?@$#9T.[SWhCKMMYhO9K05L?KK{JAU#S!U%?I[lUaCO4x48[Q[s8@[xTh!CEt89#,KkCxZJT2;bY^CS@~T5>b<JD)Z^(K!E@*R9=+?F#@<m/%RF?@7}6SVW#@S^[uH7LnXWKP+IGR?SU,
+;5-9?S[pB$8Z^6SbO/ZS(d^a:UYd^+!U@uE[9?^rShC)^.^_SHLxTzLzSKLGYvSr9B96SuA2SwR[#-%#GR;84L^QRl+cB%AO;p9v6s^7#@;P9Y^;:eQpVb7d#8Vd2d2=XN4ZXP+n?FGZ^T#C#&Vq1_C%!y_OVN0[
+)1[=4*,{_V+}AU_=R;4Z_cS*Sy4C<g*_4/8@[@YK[B35*(H2RBOZDx-q#?2U7H[DYMYGZ:S&W!YX@1ZMD+FDYbXwU>Xy^+X{V&[gF?!P.8Ad6BY)YKZv93L<ZyY0@XTR.PY55uM9YKZ0[$WAKZ[&[#WUZ3YA7!Mm
+@,KmXoYYa&A&S;A;a*^na,[c!ZE/No[~ZTC#U$6A5N6Ba9WBY}TNJ^P^Z}LBX{ZrCN5y[!WSaFJqaIavKaNX&-aMTk;YO-Cz^m[aXxNS,cYf?I^&abb)I|UHYlVDJ,D+LF^hZ5LK?hSa^z3F;JaP<.U;b/a,^E>4
+<#b5F;U*OB<SR4^4F+#0b?^-[w%8[zDzb%?*[WKu?0[ZE%TuYcL*HCL%L(U!^#Xz^%^{bJ^0JzbMb:^5bT,$^9_iPa_d+R^O:T+{^P8)>.B>H3BC#:GMH3#0(Y+%!K+I%4-_DxIoHPHKc/Rx!C#7_rc6#+#B)1_U
+[B^V3?+!(#+IQ3c74O&fc&-!cDOJ!-aOaHYv,,/{W7#1c,(3!Q!Q(#KR_y-!-N!E)K+D+K3-RbAWbQA<!S5;Sda1bE!K#+<LAw-l^jbrchcj[_^)O9HCcoE&S)-K-zb?::clD&<Jc{>D=b^6IMb(bDd&))c{HP9Y
++D_/SH_2;J;<7?4HS}_f4rVwPfR&=CGAZ7>y5jZ9Pc89cAIEc$HDQ0TwQ>HNR47^VP,))d#/PMQ>(3%4IEB?#BU2:9!gdU#6dWBL!~>5I~>D_S#>+RcEIocHHNcEH9c{_X[:Wo2tZIT1_D^@W0a)^(K-bh^+K7b.
+ZX@}K7G/Ji-O^Jb90;Q[OkF)+K_IVjQdPc+DQgP$QiO}aGQmP4P)_BP,_EQteCQ!TJeJQ)R!-2RbdAV#9W,/=bdGP%QePQXIC?PTQZP3PY1@QbOrOteRPhGRPkQue?Q}QkPrQveDEO_BPx3o5~P{elP:P5QyQlQ|
+erKZeOQ,+ceWOeQeR*87Tee_PVP3Q_.@ATX<e<70e>ezQxeLe~P;VaeGP.exeMf9eBf;eNP>ePd;ehdC,yf+:p0.+Rc=^U.3/hdx4.M>(s__.-_b(3fNc,11,@_>YC_j)8VmH$_~YJYx_p7##:6p4j[E8f4yZDWd
+GwOK[L@1[NYx3v.DZG^=d}KpKr<}D~[XKvTsWlbaa+MOL#T|L&K3XxZUa.1B5Z^&Gy^^[n[p^HfP_PTHYzTJa;@Tama?-bZ%Y6[nXi[rbpF+^7[Jff>?VKc>_aX<bybP*;(3g?^V=b#,cN.$#@=b+DgY);GRd68+
+_7Hj#+_:_/7m;Pf+gbeFVcVe_HM)XOAUT$RA,7=dEObP+L8Afn=N41g^GX,cH}g~RY-!Gv!F7ufoIoT,g^(wh5h*VU(WgbW5g^V_^Dada.,eg8A5^7=~X@hCR~?FS$e*VEA/_*#1SvA4_.%#glANgngp^7h,fLR,
+_hW[_jeGfiY*_/_|ftYQC*f~d|7T^?W(bgAbcm^GXAZNXsY_ZQWIcOfjWWaiY|@QalL?gGLCKOgKLHb9guM#_CKp_FVfgz_Jg|S^AXM2^[XrLF^d^iS_LlA9gJXDDL=9b*LzALgmAQ(pB+X{_KXRW~hJi<hyXX3}
+cqABhIH1AtiDZ(Zt@C:HR*=TB&h[+Ahjf,dyXd0.@V92cTRh2k3A(Z3C+_d;Gd4rGNGP=O^W+D+IRbGTS.C;-CQ7BV=uQ@;}(wB:)^CnCp!Xj**(JXC3a)S^CdQAAsSd>3j/Cmj?_(8XSthT_,hVABCBLlcvB^W:
+FDAK=mc~jIj+j<M2cvCkj0B<j?H-![![<ShR9DjF/M999;JhjcN/N)9H)aA5jJXTjLj8aVAnjC94hS989:6W,$jjN(9G6pPWifAOiL>}>iiPHV70;8i{G?I=GSBVRdS/<QfK+pieeZ$xM/L~gv_Di4gyLcg{X<f[
+)!io#?+;,y_RQXPUG[P3Ol+Kf3Lf#3,$#1Efir&3kVSHit2=3DGRP06g$y1xe|KYkd.nEOa|&.&0NQ8+in%7kHk.kri|_>+Dk^ivSHf7PtfBe}eqf<k>Kp@e^b4)4+4|.[P@_Zl+c)>}GZl,#CSxe[89!l=Ug!hq
+d~D@bY?/KwH%8HByg-aYMO5nL%[fht[he)>Ug:i=LwE95j6;5;5=YnTE^IUrRe/xFGJJJz?fTfF+l9^7/q7!lfX%3CCx?pCI?s<2?u^~>dhwUTCY@&(dDa!gW;.clo#/1w/&Mzl|0gl~m#7B+%Nt48lfli=UD9lm
+D<<_D>+29glrDDEM6eEO6rDIESMkE9UDD)DdESDWlR6-!K.h6@G,DSUcDeUcmBb1F@Dk:HJzljl~a#W$a%K%e#jtC7hL>2D(dkW5!E!i!nL9KFa:ZxgEZ=7lYu1TapCVar(dX+l_!U@nm.=U7!*w2=2j.$bVWi[V
+Ksg(bZlABnEX[^bbcyBx![2FM2a0lKa-?F=wlOiUOAbm!CmzD[E?m/gN!Kn##5n%TiW!ln?r[}m9DMNA>+lvX25^<SnHn%<u=UnHYsOG)^3?!l!g!h3;!SHsRR)jfI8sR%f2EzPB/!ObQKde/g.ana,A3f=D;J3?
+6uP&2C8n3JkG2_nx@K=Ue5#>kPOni6e::Of5=Dis+Ziu3DGcYT2p8%f6eyk}eAl!emf!l%Qsf@fDk~epoBf<Q*fG%7PAOVdBnmoPn_2gGAPfnr,P[YH$>pdOK|QJOudYQU1_O[#>nu(wlfdT#=dV9!RoHhoknuon
+B<;v%4!UeZf-QYf/PX-@edkR:yo3fISHekfAo@oIf8esi1euPzEvo>e@eoQ{l#fEQ+P@OToZKx6ro_k#djocQ1BM(3Q3oWogR[HcBU9{0V#?1xI:jaR$oS1Q,@f+H~nn+M_12k+~#,n^iwoN89#@2D+4({*~GUBI
+Nq273?)b4SogoiHxo*gbn2huhD?FdL(oBD)bobL.%$H>1rQ35_9Lpz(zc%p}N#5^CVpeBMHNq(l6ikkLeaP%f1eef4egR%Nlejk|p4kgp6oJQoi1f>eIoGp+qDp-f#fFf%#8oOPgfJc~pWpSk1iyB8)j%8[RGh6t
+iu9TGK-wQ3n~R>.JI$C_Rbqh2C2QdnkG7s*;#@kGHQn[o73ep[qxk_+qABnX,kRyckLBp^paSH^xC%5M,c?K^w^*n;>NjbSsjxjG2=)1!t>{#0>}r)qySH(L(N&v&B%x%C%w%y&j%X%U&x&$%x^Jc^(M&UrE#}&g
+&i(9&RrM%^rU$S#J#a&!&A$&&L%C()&I&5$#(?&n)KS+(X7-o!Dy,E+7qto&I/kuG?qqkrS~2kk/%7pEQ3(%%W%y/E#M,$3#%X$(&g$Are&5()%y/R%Jk::pS2hZ_9+AiP!-#A&0/2ok;;5~:J+Dokj&/2ce8Zlf
+5NA{Iyd%hMC%ndnfHh2FsTIor0jvjE980C4Xj|r6jdN0jm#89J6~AAhZB)S#A{A5sMHLA|mdJCsTTHnehQsdA1jfsa,Aj}#1sfk#)asiB.gmsm5Jso+rjRsl+z4Zt-_gR+l7;S;U1*4!!-#$-P-R-T%I-V24VWDg
+5X!X0qY%^8>rt<$A#d192{-U-WtCmHDO5:K7tF5N[k-ftK/B&5/RtQF=DNDY?H61tV[^tK&q&5&w%L#L&A$!23!EtRnQlS5I5O>C-c5ZtF5QtK21%=trtt=9tv5%1H5*tW5^t|,$tK#ctO%>%NtAtstc>16;u*5Z
+i[>t5Q4B)j;f1*;d4!,S2)(?&zt@-W,$(LtM22/)uI24uK$At^/CuJ,Stk/6(8to,XtruRu!%>u5uRu1/)u3tr4%dE4G;$!g,MOb6s-@8u+DG[,28.,QPp(L,Utm,XrOqXo:4Hur!_!l*(#.v((s+3sA+m*V,5#.
+7=o<*_?wuoBK3L1,/7%o/,v!X^YU1d,Ov&v)v+-_;I;K!E!{YrMf46#97=-NvALav(+LvEv-;Jv/4((svN_>9VvQvCvT7qvVvH$~B?%8J*=K,kuwrnhdXc_j-^912w>}Z<us70vvaH,6GR;Bvz+|GRvy1LQyv}1L
+o9v?2p<R83v#0[il_j(^3V#/PYF+vv7!4R:t#6:9w6RT(r3?2!4Rgjvbv*vdvG#.2TKg7-7r*V.H+K6Vv2OtwC:U-2GRBA-/(^,lI:3hw*Vt#-0HhbqZ(l,a!i3s6tM?b$n)?+n+Tqg*b^lCn0[le$ODk5/xstU$
+5(e*??A.;U=@8uW}whwj/%,$:E!^li,HlkwlNcx1X(6KasCPnTCZ@(0qM[@em.,Hwi#<wk<uw2+{!i8)8@OtQZoL91h#pY:U;8QZ_BxM<Ppb2p9Vpg(r#+pj#ABJmt);owf+9V?p*._Bn#E2XQdy*~#C8.-A(w/l
+#C([-_xp#7QD6r4l(pxwQDv(%0Zee{aGxsxu#>y!L_f<!k#B6tpNS,uk<hUsw5+b2=Wc,P3{urx{xo,O-A@O;JL_B15}#.Rk#=7&RE)(uDv}w>+>(ry;Tlu?(l7$ZCphx[!i?(d-6pYSw+!C+$+&;p)(!_y(rq8A
+6{Oby[>yQ38lxnx}(3Qy3Yw1bvqb)^-_R>#<;$9T89LtXG(d,2xG+2xIT-,{Jh6a-_!j3X;J4-v6,_,HEu!CHT9Mw<SURL7q!K;M(s*.z@7rDksFvxz;#H;A*pejl3,21LP{#=vs#7vuw<Dkqm*^vQ=$2d3Kw67s
+zUU5Ob(wzYGRumv74ZvQOt6|_5qQ89c5E3xY*~;D+%,*4(BHx_NqE!y96XPMOt4GzWnk;!n.9*q$6{pDHNz#8DLXOV3,X^.opII#0rz,z0zL2kuu,;,=9?)%Re-?44#5z}yQ8DqP{8Arz.#>z0:tnsEzwes84r[7
+z,yvR:,2GFc%w9xH3tz&{_9Tx)xB4csI/&kyka:U{=w!{lz4,D,Fz6{ewkd$n9g5?F{m1FCoDa{z,HHKJ#@Kx@x*EOpvlL?F{/ob|-oeGK&3{mv>VtVw7WfF9sl-<DPVxLT!xUd72kxRi1xT/%+qutz4,(,*|@8*
+eO|9$|pZ&3xg73oD#8,qCZ.@!KoAqM|TS(Rb,ax1+Tx6J(^dy_4ndyzmzeM/yz,Oy})1|bl~|dO+|kGRtDu)u,a4,cGt_$|g8&zd{%(l6U/@zmym4GHh}*!g6v2w4b#C*$4X,O>n)i0V$|Co!K{m|V+M%4.Q7!(^
+2JdKc#p{c%P.Q3{m,h,j,l}@1CA+@udmzsyX?(fsyW+-?(!_3I#<c%yY<0!Qc*#5!g4Z}T}Y}cPM6{/?9L}C-@q589-&79#4479Z!n!u!y!z#)!t1G!WCu!r!g!i!qu7iH>N3?!n!v#)!r!u!},$~.#)4u!m!nu7
+u(5&u,tH>GmQtumItfu:b+?kbuR:B?3C;fza8u89yU@v:_-^<b.>.y9v-xuj4C~O<xZjC{<4z::9Bcx#;V;X)17A.*Z@3t.*3?!g!tmjp<lB8ZlDH;y3;96s6u6w8ofahV89=C7+~z8n7u=_8cR[-m2=!CzInxk1
+4a=e=X4g7A~Q=kv^v##19Y7AZH~x[|e!Xrww{h~WAL7A0Ax1m3x4A9X1x:I+Cr8,0A~hH4LL}wSQEw@~ja7z8,OLVQVW!m[TbW3S{h~Wid7i7A3r(z+@,s!m[TbW3Sl?.$~omjbHJ<X-@:&)=LDp5)lZwyR)AL7A
+3r(z+@*dl~m3x4A9X1x:I+ja487A3r(z+@e[7A#-|((w!m[TbW3Sl?.$~omjbHJ<X-@:wxj(nxAoW}7A#-|(x,:E~hBB|(x1m3x4A9X1x:I+ja487A#-|(~h@g/J(w!m[TbW3Sl?.$~omjlZwyR)AL7A-m-8m2Wg
+=Fm5EE3S|Dn_.=FDG*6L6d6PEP;cDJ>CE^mP>[Eb487A-m-8~h6Y~a!mT0aRm^Y[maX-@:!Cl?E#ws~t?3bf^!pwsR4Z(f>CahgBaGgDWEan?!Z$Jal~M[2F{hC<~h!Q#2#:!h=C!m[TbWXVlPU*|x5J?3?3[^{h
+~WAL7A#2IvbA[U!Cl?E#wsTz@A|*>1bddkmdHCEa487A#2#:!h=l!-7A#2#,}V(d!m[TbW3Sl?E#ws~t?3wvmb?~w{g6>CML{h~WAL7A#2#,CkCG=u8N487A#2#,?(~h!Q#2#,xG-|}wSQEwF@3hE{4QTmbWr&^!
+pwsRS#@@@A|*n:C%PkHN>DHKS$r4487A#2#,?(nLCHnNx5O+!h~%~(?zX1x:I+Cr4H~h!Q#2#,xG-|VQVW4p7i7A2O-|(w!m[TbW3Sl?E#ws~t?3bf^!pwsR4Z!^CV,dbkiE|x5JDaX{5KwvmbCTM3{h~WALW}7A
+2O-|DjX#vICHnNx5O+ls@@mgmbCTmvX1x:X38b:Xb?~h:Xb?CkCG=u8N487A2O-|~h:Xb?y!b@[TbWr&^!pwBwmfHJ487A2O-|bN8A:Xb?y!AD[J7A2O-|W5XnU{m^Y[maX-@:bCIPmfbGYyZ.i%TMZygFY3LB!^
+Z|i_ZsiFF>mCmg?!x1M[0qmzJz7A2O-|~h!Q+bOb/@!mT0aRm^Y[maX-@:!Cl?E#ws~t?3bf^!pwsRS#tf!TG/|%Z.i%TMZygFY3ap2F&*1dY)-$WGl~M[0q{hC<~h!Q#2-ElX!mT0aRm^Y[maX-@:!Cl?E#ws~t
+?3bf^!pwsRS#hF,cahgBaGgDWEan?!JbaA/|nNM[2F{hC<~h?w/j(w!mT0aRm^bXwpg)!C~omjg3d/sR4ZMQ5^e/^AK*h}0/$S#c$!/Ui$gDJ[mqi*YlZ#l~x=0q{hC<fR-K~h?w/j!zh~!mT0aRm^bXwpg)!C~o
+mjg3d/sR4ZtH5KwvmbTCi$gDWEan?!WHJal~x=0q{hC<fR-K=m+)}uVKvvVW%99V%9fdbv&0.o777r8cR[7A.x,E8iQ-SQz9**HWSW8A!Q~QSZHa(xk4j(nxf+7A.x,EG@,yk:~w&0.o/c+:8c-gM>777r8c!-7A
+,O/a#Ak4j(o)7A,O/a#A!z5uk4j(o)7N!Q#2(_8+7A#2#694|>|E~Wt4^L>y.oB2#C~Kw8:q(w}t7:VKvv(W|17#|4YUv4~iZjk1:u-|o1XQ8,~j05B0z,/aB4iepV707A#2(_8+:u-|o1XQ8,#2#6B0z,/aB4ie
+fL+)}uVKvvVWyufdbv,O/a#AvJyF9!yj=P}M3{,)9=Ar+@MA)zOtl3/^/j(t-N8A)79c)z|Kv5/^/j/c/e#CSZP@7A,O/a#Ak4j(nx=b7A,O/a#A!z5uk4j(o)8Fxm7J}i}b*-E!4(}u4Y.dZh!K/a,k}+4^pd~r
+>p*;#6ob*;#6!Q##Ot#@{1pL{4);I$!T#/!P@eRb7A,O/a#Ak4j(nx=b7A,O/a#A!z5uk4j(o)8F9Y,b#@Ov{33?pe}WxZx^xapm89!xc!H)cEc,{+q#{-};uu/j8R/n(t}O~F)jw:q#&fSjHh+ICo!x!-7A,O/a
+#Ak4j(eTS,7A,O/a#A}+Txe(|,|.pD!-7A,O/a#AGn=LDpIE.ocSIE8~+K!Uc,ob!P#@pD~h?w/jgcC/4I#6n}2D4RQ3+I{|!Y!-7A,O/a#A!z5uk4j(eTS,7A,O/a#A!z5u}+Txe(?F#6{+!C#6H>oe7A,O/a#A
+!z5ugcC/4I#6!-7A,O/a#A!z5ugcppcR4|+%H()*!H#.#7-X3r-_Z6~G=+&,/{vJyF9!yj=P}M3{,)9=-_Ot0[9?3r/wI:d_*(}<!Q-&:?Jh,nN^Rb7NAP,k(t8+SQz9+MHWSW8AAP,kSZHaHi{h~Wk8w.w+d4k-
+2k7A7z#>(tRb7A7z#>}wSQEw@~~8}z}|}~E{(lD:bA[U!Cl?E#ws~twulZwy9xbCr,4ZCVHH48~iZjbNGHCD=T=V=f4g7A~Q41e[7A7z#>VQVWt5dyGgQDqby8ZGB;F!}M}+zo*^LZ,snh~w7z4Zx_<m=29W)1LZ
+,sLZ+MT+Q.h:AP,kVKLZ#.(W|1{QwaYUVwzq=O}Tzu#<zw#9zyxaz|x_{#8iQ-?lE~I/}Fq+A6;vCo1B3hd^H3da7s!Q##dkDalhHs{v^!pwsRF6#DF8IU|*n:C%{+9MpDHsIWn>U*4I#6HsIWhyFD,-Hsk4j(eT
+Vvc~Hc{h3Et4[P9.(dG[/t/v/|/MR[8q0|0}#l0#%v0%&C0(P@SQEwI~Sj:JSQ:sI~!YHa8v.$&3Q32>H-!S!Zc@,7Ig(#C^IaHVHKH.Io*?{|M23?3t;yjaHh*?H-5)wAc!H)IfIgHL!ZIo*?GssoHKC^IaA<~#
+7z4ZjYIolA4{H&c#H5#+H9Zk#2H2H)H+#+H98D>:!^%)};}I!C2>%4x.F~Ia!C2>%4!ZHKE.H;t4t.I6708q0|v:-S%WrkuZ3!rD(B18$/^J}%(_;sYkHMHhc&H)IfHKC^64HK%(c1B-HK!X=~z7#4o(^tHac@(w
+#4&f5(IdH32O|#IoIg5^ni4ZjYIolA4{H&c#H5#+H9;y0q[Cc9H)H+#+H9;y[^A{n66/c1tFHKc&H)H+%2{|HNIg^zHK%(c1B-QVc~SQ#4o(^tHac@,7|#%(Io#4HKI_ni4ZjYIolA4{H&c#H5#+H9;yDaYkE.Io
+#4&f^tHK!XCUH2H)H+#+H9;yMLA{Da#4&f^tHK!Q1mq5SQEw3@)^+MT+?e}y}{}}Ha8,7z#>VQ#&k4j(nx{R89!r!o!t!k}}(w5m3?!x6/!h!u!t;T503Sv0+^-XvIvKvYome2<2vIvKvYom-X*1,EZevMe2-f3S
+vIvKvYom-X*1Z3vJW</W#7e2<2*1Z3vJW</W#7-X*1Z3*w)m#</W#7e2<2*1Z3*w)m#</W#7-X*1Z3!n;(e2-f3SvIvKvYom-X!EklvJW</W#7e2<2!EklvJW</W#7-X!Ekl*w)m#</W#7e2<2!Ekl*w)m#</W#7
+-X!Ekl!n;(e2-f3S*1,EZevM-X*1Z3vJW<3I*6<S3S*1Z3vJW<3IV8*1Z3*w)m#<3I*6<S3S*1Z3*w)m#<3IV8*1Z3,G,ke2-f3S*1,EZevM-X!EklvJW<3I*6<S3S!EklvJW<3IV8!Ekl*w)m#<3I*6<S3S!Ekl
+*w)m#<3IV8!Ekl,G,ke2G889!x!Y!h!u!t;T503Sv0+^-X)xvMe2<2)xvM-X*1Z3!C/W#7e2<2)xvM-X!Ekl!C/W#7e2<2)xvM-X*1Z3!C3I*6<S3S)xvM-X!Ekl!C3I*68a6C~w0*.e)8#17rAr#-AX=1,Azk[P
+F)}w~wNNcn0lkE#1VK!F)^#1T*,cVW3Sc{SNf+89#2_t#2[CWoE~=01UdQow<m0Eq2ow<m0E!Q##&fox89!xc!H)da!K#2_t#2F98vh:QDqby87!!z!g!{c!H)2O|#R[?m.q!Vz0s-(R%OrP-9?m.q!Vz0/F(Ou#
+#U^J}%(_w:493>SQEwI~!ZHa5RS5~r4{6rPkHISjQyN^GR!P#2c[-9#2_tc&H)c),jF+*?ow(3GvSjQyN^GR!P#2$|-N#2[C(#*?!d(dr0wWE~Y##2F99YSQEwI~!ZHaz7z9#,2tHWSW!K3S<!DaA>idE{(l#4j/
+0V!V;y#,#Bc+kT0r0VOt?m.q!Vz0s-(R%O^JRbe={7#4k1NN6s70Co#-S53{70Co#-#$#4_QfLc~NN6s70Co#-S53{70};#-S5dr#-#$#48!Q3#-S5H9soq5S*-K:Q-a0}#k%zto-S#W$A$$%n^J}%(_ZkPZxrHK
+C^M3IgHLox897Wc50=E#>W4{b*#2}:HLZ[b[H$4{b*!P#2}:HLJL3?c7,s4<SQ:sI~@eE{(lcAPZIo2>CoIE2O&foxc7#.7}VWlA4{H&c#H5#+H9Zk.EIe*(cnH98uSP7ko(@e:JNN6s70Co7Wc5#-70Coc7#.7}
+_Q+yN86s70Co0=Jh#-70Coc7#.7}_Q+yN86s70Coc7#.7}VN#-70Coc7#.#$!K2>T+(3Gv!W_QG9-K:Q-a0}#u&y%krj0%%[ta(Sp:EmxrHKC^!V8v7u0l2kR6493>SQ:sI~%)E{(lcA2>CoIE2O&f@eHhIE2O&f
+!Y4_7u7}VWlA4{H&c#H5#+H9Zk#2[Cc9H)H+#+H98u0=#>7}VWlA4{H&c#H5#+H9Zk!P#2[Cc9H)H+#+H98uSP7ko(%)E{(l=O!K2>T+(3Gv!Y+yN86s70Co7W#:7}VN#-70Co7W#:#$#8_Q+yN86s70Co0=#>7}
+VN#-70Co0=#>#$#8_Q+yN86s70Co7W#:7}VN#-70Co0=#>7}_QG9-K:Q-a0}#s&T(5%^$$%n^J}%(_Zk=O!xHKC^i[!T!Yz7:sI~Q2,cHac@<!#+Sj(d2>%42pIk!g!{,$!K2>T+d[=DHn!g!{8vP.wrH$4{H&c#
+H5#+>DHKZk#2[Cc9H)H+#+>DHK~M*^#>SjwrH$4{H&c#H5#+S(CoZk#2[Cc9H)H+#+S(Co~MB9P.wrH$4{H&c#H5#+>DHKZk!P#2[Cc9H)H+#+>DHK~MB9SjwrH$4{H&c#H5#+S(CoZk!P#2[Cc9H)H+#+S(Co8u
+NN6s70Co#><!#-70Co#>|$NN6s70Co#,<!#-70Co#,|$+D2>GvA>Qyw_d;NN6s70Co#><!#-70Co#,>D{RS+:Q-a0}#n$B#N%Vu~}%(_#<_t#<;s!xHKC^,n0H}:I;![[P2O=O}b)s7^*)4+DKIgCp~,89=O,d^L
+>yfn6s|(,$#5}B(w2>%42pIk!g!{_.|(PpP.waYUlA4{H&c#H5#+H9#<_t.EIe*(cnH9#<c;pV70#-|(PpSjwaYUlA4{H&c#H5#+H9#<_tIe*(cnH9#<[C>[xev#lA4{b*Ie*(cnH9#<[Cc9H)4I7r#+H9#<c;9Y
+SQ#-|(C7@e:JSQ:sI~Q2,cHa+yN86s70};+)2PCofn6s|(,$#5;-3{70};+)2PCofn6s|(,$2>T+;-q5ro^:+@,{zev%vSwFv,wH)ZvKvYom7=GR!x6/!h!u!t;T9?!x!Y!h!u!t;Tz7z9%#HWSWS_+@RPHaU5<!
+#:Sj(dvavSwFv,wHS_#$!T_Q{GwEvUwHS_#$!U_QR[#:P.w#Sj8+NN7sC^}l9M;y{!{Rw.ya)^#1#={W=+OU#A}4,{yjR;#14j,)Ot;87A2d@%P@7A2d@%4Az7Ew@~!r!o!t!k}}Han}TmbW3Sl?E#ws~twulZwy
+R)48~iZj=T=V=f4g7A~Q41#6~h}d2eVQVW#6k:89*(,b}i}b*-)a5d)^y~*^pe}WxZx^xapm?lw:cBH>BN5^d[c9H)REc&H)<_BE}Xv(%/wI#0zyd[5^xDbv7t#4!Kx_w92D*(+ICox_Q.Dx,l(d!P#-H>##pIDx
+,lqkP.waYU3Yxev#{)6rq11rxdHh#-q$&f.ofn-2Co#=wcq#q2xdQ3#-H>BNEzDx,lCo#=4kdy=Od_*(!K!F)^#141!r!o!t!k}}RGEvC7I>nj(lc{[z7t#4A6F)VQ#&#$!T_Q8n#9#4A6F)VQ#&#$!U_Qn}h:}d
+2eVQ(WcbSHhXQ-p;(d%#Q3+6#6k4j(eTy2IWn>U*4I#6(X{v^!pwsR4ZpJ{2pM1xT+sN[J#6}+Txe(?FcndQHhgb!~d[5^,$cnq2HhgbQU&f|$#6Gn=LDpIE.ocSIE8~+K!UGHN3Hi!~;-t.nb#6k4j(o)t4z7Ew
+=Dh7TY!o!t!k}}Ha8,2d@%S5k4j(nx{R~wW:yF9!~Kvv8bw9ur0H.HzZw4z_w83?/a2k(dzf:UvavSwFv,wH)*vgwPvj}MvmOtl3-&;72k/a2kwaYU&0.o/c+:8cf+OT-^.$BE}X}b)s}+Q2=P}M}+4O{1pL{4S,
+H~-^&3I:G[-&:?zn=Pv#&0.o/c+:8cf+z!3:(d}<!Q-&0R-HSHw$,5#7(3w#w<v~1*|t-9-NuA6*VKG[-&1*(W|G-&PYxxP@|18,#2(_-N7A#2#6:|8/zIv$TlRb7N!Q#2(_8+7A#2#6B0z,/aB4f+7A#2b@)*2s
+&,Jt&-~_9j(KJP!n!r-X%.fn#2m#Y{2s&,Jt&-%.fn#2m*/c/e#C#=9sIuTHb?M[u,si2d4XjO<Szk9Y7A#2#6yA-|?u4I#6=b7A#2#69I2c2e?u4I#6=b7A#2#694|>|E-3t.I6707A#2(_Rb7A#2#694|>|E3E
+Vw}_8b=O}Tzu#<zw#9zyxaz|/a,k}+4^,O/a#AvJyF9!yj=P}M3{,)9=Ar+@Ot;8{$ixv#&0.o777r8cf+z!AX=1/&va)V,}*cNE,~y~*^cEpAcEq.dapAda2^I/H3;+YQIE;+YQ!PIE;+YQ!PIE;++Gz+&0:U7g
+z7D33v>kSj7z.%-N;s3v>kSj7z.%-NE~(d3v>kSjE{}&}WxZzu#<zw#9zyxaz|6s70Co}b)s9*=1EO1rxdCo_t=1EOBNnVCo[C.>1U!Q##&fSjCoF9+g{!R[H>##{7w_d;6a&0:U-Cf+cEpAcE2^I/H3cEGM*(pA
+q$q)H3cEGM*(q.H>oedapAda2^I/H3dacHpAq$q)H3dacHq.H>oek8k8v46a&0:UwaYU&0.o777r8cf+896[Woc!#Bq%c6*(pAda2^cJ#8#!3?#-_tA;cE1rHh-wow_q#82^Hh-2ow!-7A.x,E=Ow0?l.$G[-&2&
+!-7A0Ak4j(OZuy$A/)(R%O(i:Q-a0}/)(R%O^JRb7A0A}+Txe(py*(pAcEoe7A0A{v^!pwsR4Z6[YR7A0A|c?u4I#6dy-^8P3t?m0}#p(Ou##U(i89!rc!H)dMd_*(!K6[YLHKG.6@u;w93t+x3ScEpAcEq.!r5Z
+<S3ScEpAcEq.Da!r8a!-3ScE1rHhqf!C!r_q#8q.!r5Z<S3ScE1rHhqf5^_q#8q.Da!r8a!-3ScEpAcE2^Hh-2q&TY5Z<S3ScEpAcE2^Hh-2Q3!r5ZTY8a!-3ScE1rHhqf!C!r_q#82^Hh-2q&TY5Z<S3ScE1rHh
+qf5^_q#82^Hh-2Q3!r5ZTY8a6CSQkT4Hz<SW8AH4LLSZHa5Rk4j(HV#=8P9Xe=#=8P-9}%(_,s9cS55R}+Txe(?F#.#$!TVN#.#$!U_Q5R{v^!pwsR4Z#.#$!VVN#.#$!W_Q5RIWn>U*4I#6k:7A3r(z+@Hc{hpp
+uy$A#m&A%E#~(i:Q-a0}#m&A%E#~^J}%(_MXc!H)da!K#2XjHKC^S(}@A=5Kox7A3r(z+@Hc|*n:C%#-_t;r~hHq(z+@Hcw{^+MX<mO%!-7A3r(z+@*d|s?u4I#69Y7A#-|(k4j(OZuy%;%{#M(O(i:Q-a0}2)/F
+(O^J}%(_#.NHd_c:!K-2H-!^0qXk!-7A#-|(}+Txe(|,_t;r~hBB|({v^!pwsR4Z#.Y2#.#7~hBB|(|c?u4I#6d470G[3/+MzI,S.s33%=^JeQ*~#A}4,{yj~T2CB<F)7rG[3/P^#-AX=1,Azk3{,)~h}d2e#=9s
+-3t.I6707A2d@%9sP@SQz9(_HWSW8A}d2eSZHa!C#6k4j(nxf+7A2d@%9s3E7i7AT!Hp{h(wG[-&;d!-7AT!Hp|*n:C%#-_tcE2^q&~h6Y)sgcC/4I#6!-7AT!HpW51a*54|+%H()*!H(t!C#$!H#.#7#&-Xvy:?
+Zg#C;d9=-_<u-7c!H)dM;+8XwY-1&fd_c:!K;+8XBU#BwY-1dk>C7!#2->3:(d~5~1!}}[(rc%~5~7!n.3-77!#2/@G[/./0/M8v7u2^I/*(2^Q3A>Q3}<!Q-&BcGR!T!YSp~h!Q#2#:!h#1k4j(Wo-B0}/5u|/8
+rOR[#2-B0}/5u|/8u~Rb7A#2#:!h#1}+Txe(py*(q%Db_q#8oe7A#2#:!h#1{v^!pwsR4Z@uWp!-7A#2H>mdHC<!4}++~h!Q#2H>U)iE#2->,)9Y7A#2#,yZ{h(w#2-B0}#r/7to3$-S#J(i+D#2-B0}#r/7to3$
+-S#J^JRb7A#2#,yZ|*n:C%#-_t7W#:oe7A#2#,j,Ckq*BD-w%41mBp?3hJxD-|c!H)c),jbO-7HK-cc1H;SQkT4Hz<SW8A!Q#2#,xG-|SZHab>-|T_I#fY-|5RIWn>U*bP-|SH#2->3:;/tSDYg7Dqb-OKIWhyFD
+bP-|SH3h-NB,k:7A2O-|k4j(Wo-B0}/5&x-S&~/9R[#2-B0}/5&x-S&~/9P@7A2O-|}+Txe(|,_t7W#:oe7A2O-|j,Ckq*BD-w%41m>:CVC^1H~h:Xb?y!#6{v^!pwBw>cd_c:+;-7F~MLdm7A2O-|y!#6IWn>U*
+#2->,)!-7A2O-|@.gc,7cQ*5c&H)c),jF+;+8XwY-1;-9Y7A+bObQD{h(w#2-B0}/B(8%W$$18,ZR[#2-B0}/B(8%W$$18,Zp:*^=OIEc),jbO-7HK-cc1H;7A+bObQD|*n:C%#-_t7W#:2^Hh|$7A+bObQDao/&
+q*BD-wBOBy!T@@x.!-7A+bObQDW51a*54|+%H(!K!J!b.*5~4I6K!c!Ey|S}u:Y%>-!E!d!H#=!b!R.*+2!d!b.*5~4I6K!c!Ey|S}mKmK!Y64!E!d!H#=!b!R.*+2!d!J5@,-*5IFGG!E$S#f#r-X4O9-cRIFGG
+!E$S#f#r-X-cHN4OIr7A#2-E?!k4j(Wo-B0}#s&7$B#N%{#U(i+D#2-B0}#s&7$B#N%{#U^JRb7A#2-E?!}+Txe(|,_t7W#:2^Hh|$7A#2-E?!gcC/#2->,)!-7A#2-E?!gcppcR4|+%H()*!H+M~.-X;+8XwY-1
+Ir|G-&0K-8p:*^pe}WxZx^xapm8f4~R[G[-&0K-8=)uy$A#s%Z%r#J^J8+5j8#.Jowt.I670G[-&0K-8=)uyuS(D(8%o#O/F^J8+5j~r>pq11row~,S+.%4~~r>pq11row7mH>QUf+897W~r>p}_ob}_pDQ.,77$
+Q35j8v2!}<!Q-&0K-82&uy$A1-&w2+3&7=GR@e-NC^j47A-m-8D994|>|E(wG[-&0K-82&uy,T0%()&5&$%M(i7A-m-8k4j(eTS,7A-m-8IWn>U*4I#6!-7A-m-8{v^!pwsR4ZpJ{2pMJ+7>~h@g/J}+Txe(?F+;
+4~dQHh7WdZ&fDa+;4~q2Hh7W{-ow~h@g/JGn=LDpIE.ocSIE8~+K!UGHN3Hi!~;-t.nb7A-m-8k4j(o)7i&,/{vJyF9!yj=P}M3{,)9=-_IrkLzC8-*s8Q2w,HOY.oB2#C;fxDbv-&{Z9TSQz9vvz<SWz?*s).zB
+*s).+BS[8&zHzJp:*^~O}t7:VKvv8!-N~IL[;U~L)1W:yF9!~Kvv8bq5Vw!v!u4A^L>yZg*t{Zy~zXur(wyMurw?9X89;+NHzf:UvavSwFv,wHwJ~z)*vgwPJ*cak-2k;+Gbixv#v4!v!u!Q;++|zIWo.Hk1!v!u
+3RWo.H(w;++|4$v4G[.?xVR[!v!u!Q#A-B<w;Jk1!v!u!Q#A/@;+8X,<#6#51Y3D7i;+8X,<#6#51Yn_G[.?.A(^t.I670!v!u!Q#A(tzIn{(_Rb;+8X,<#6#51Yn_!v!u!Q#A#==b!v!u!Q#A/@yuv4G[.M.JRb
++D!v!u!Q#4.W<w;Jk1!v!u!Q#4c5!v!uW9#42D;+8X.U.I/>)mZk;+Q%)^.U.I/>)m-97i;+Q%)^.U.I/>)m3tw0;+8X.U.I/>)m3tG[.M#:.Bt.I670!v!u!Q#4.JzIn{(_Rb;+Q%)^.U.I/>)m3t!v!uW9#4#:
+=b;+8X.U.I/>)m3t!v!u!Q#4#:=b!v!u!Q#4Dyn|t4e^o{G[.U.I9p6dArs>|G.S.U.Ik[o6q}p:*^;+NHyMurw?-9v|!v+-urw?vRvDwGv.wJ~z)*vgwPJ*ca70;+Gbd;;+#74Vo~+Gnr9!|YKYvgwPJ*nr9!f<
+.U.I*5fcd?M<l8|:@v3K,RlA4{0E/a~Xhebvl1/!7uqd70!l.[?Tj#d;!l.[?T#@B0z,/aB4pV70!l.[G^k1!l.[G^B0z,/aB4f+!l.[?Tby!l.[G^z1ADyu89;+NHyMurw?-9v|!v+-urw?vRvDwGv.wJ~z)*vg
+wPJ*ca70;+Gbd;;+8X),#>HR,CRE.<k7d?vo[;_jl1oX4Zw9ur(wyMurw?9X89/a2k(dzf:UvavSwFv,wH)*vgwPvj}Mvm7!;+NHzf:UvavSwFv,wHwJ~z)*vgwPJ*cak-2k/a2k-N;8;+Gbixv#7i!l.[?T,b;Z
+,}0a}7(Z}9;bBU#B;G*PwrH$4{={#/CV!T#/CV!T#/T9}7(Z}9~r4{0E/a=(.P#/A>48/a<t@K.[G^Cx,}0a!m#C/a;bBU0Q+%6d~r4{={#/CV!T#/CV!T#/V?.P#/2F{N!C.DMk}V(d/a,k}j-*48/a<t-g93),
+#>HR,CREpT,/@K.[!Q3K,RlA4{0E/akXY+.[H4+2MB(tRb:u-|o1xlzpNH*;6NN)nG!v8-*s6b9cHX#>#=;Dt1;GwH;L*s(r1w#?/%-XJ#|q.[H4+2MB})#7*.4>CI-;I4hct5^LdFl}GGGIOtl3l1|4YUVwzYzJ
++-urw?9X89/a2k(dzf:UvavSwFv,wH)*vgwPvj}Mvm7!;+NHzf:UvavSwFv,wHwJ~z)*vgwPJ*cak-2k/a2k-N;8;+Gbixv#v4;8!l.[?T+I-N!l.[?T#@:|8/zI=P}MP@l1/!7u+BeVl}upOt;8!l.[?Tj#ixv#
+t43?#-<vYN}X}b)s3?,i3KkU2kwrH$4{0E/afRqU70!l.[H4+2MB(t}%(_:r35,b:u-|o1XQ=Pv#!l.[H4+2MB#=xh,H#/lAIIM<7N2>GR/#.e66GM_cQy!ElA1|P@,iRV4HILkllAId#@dQHh#-IL*w:rlAHKF{
+#7#@!Q##)1#12kj)t4kX(x2k}%(_#7,s;+8Xeut$=N3F(oE#>W4{7+IL*w:rlAob.E#-IL*w:rlA!Q##Otc)8~{1pL{4);w^k1c)8~+}(o6X+Y2t7i,iRVc6+MHhlA4{b*#-IL*w:rlAq2Co#7#.B0,k+;(o6~~,
+Vw5d.$nh89/#2OR(Bu)O*.[1LZ?YKn,~+nzIn{#6R[!l.[W9.J-Nr}8*6Tq?^q)O7P6g2j_:@Nki.o::+*)(zVd;5dgd=Yh7pV70!l.[AP,E7@-9r}8*6Tq?:UkM7P6g2j_:@Nki.o[*4>CI#6h-|R#=6g2j_:@N
+ki.o99;-{I5dgd=YHNP.|6|o:#(dGM,H);HhlA4{b*5dJh>$H9G[l11Y.@@K.[!Q3K,R!l.[!Q3K#6}[(rc%O[;$H2H)cEGHIg5<<L|q.[?T#@BG%/(Z}9oj.[!Q3K#6n},j:sb[H$4{7+IL*w:rlAob.E#-IL*w
+:rlA!Q##Ot}e{1pL{4);w^p:*^*4%0c!H)dM!l.[!Q3K#6{1pL{4xcc9H)da}<l41Yno@A>CH9M^@K.[G^}j~a}b)s}d,j}f4Z/a,k}+LR/a,k}+2pHh}eH9}b)s7^*)4+F{*4%0e-}r*^!l.[,N4Xb@)*UdjMBa
+l>wpg)b[o[[[NUg.Yi@@mKFEYfbf^!pwsRS#!VDa6/??U)iE|x!KlUNT?ejsX-@:wxj(nx@j:(@l(dg7E?lcU1!l.[,N4XAD5KnLCHnNx5O+X+M[x<X1x:I+x>TH.[,N4X#6mZaRm^Y[maX-@:cwe&pwsRS#Dan8
+^!pwsR4ZmK5^K2ms-O!l!r#!mlY{gDJ[mqi*M3mwX*n@aEY;aGaEaKKcm..[,N4X#6li.[Lil;o-hrMFg.YiL#?J@}n8^!pwsR4ZYlO>bHJ%[nL5msL7mlY{gDWEan?!Z$i,iEUbnD.[,N4X#6bN!K!l.[LiDj^L
+dF.[LQ>~Yx_t[CybWeT-l;o-hrMFg.r2C%_tl5g3d/sR4Z6[YLbHJ%[nL5msYwJhi$gDWEan?!JbaA@cblatnD.[,N4X#6bNiAX![7dyvJLQ)<.%.[LQ)*$A#^$A#^$A#b$A#m$A#r-XtzC)5LX{!V|$892j9vLQ
++}.[LQ)*$A#^$A#jrR#d-XtztI5NX{!V|$89!s*(/oLQ+}.[LQ)*!P-XtzNB5;?J?I|$89(n/oLQ5Cl1LQ)*!N-Xj_?j5;?J?I|$891Y.@!r4bl;U{m^Y[maX-@:cwe&pwsR4Z!W5Lcibf^!pwsR4Z!W2F!VK2ms
+,7cQ*5}<l41Y.@9Li$gDWEan?!JbTTi_ZsX*bmnD.[,N4X#6xDbvZnLQiA!C[B)1gbkOe7o/kBi7q<R[qAenqCQ%qJf=VcqIp7oHqLo?qNR#Q-!l.[fXeTS,iYiBM4g;iE^cLs?yM8lQnQ~+>[S)d?M<gbf0:4#.
+e9_Ko3qAenqCQ%qJf=VcqIp7oHqLo?qNR#Q-!l.[fXo)iYX?iTb6LqM7mwSIicl6IrZnLQ=p#:LQuKW:)0=bZnLQH[,E#8LQuK7z9v*n[;_j0.!l.c.e|X_=cLc!H)dMbytzu->uG[l11Yn_^W1Y.@!r4bgc,7cQ
+*5iqut_l*ul11Yo8d;fU40l41Y|Xd>t5Q7*(/ok=qGgw_G#5e9k+0.!l.c.e|XG[l11Y3DQ3Gt:p(n/ok=qGgw_G#5e9k+0.!l.c.e|XG[l11Y3DT+N^:p!l.[Lif=gw_G#5e9k++Dl/,{l4k1l/,{l4kI-Kgs:p
+~wl1,N4X#6{qiqj!P@!l.[,N4X#6k4j(eTS,AB!l.[,N4XAz2F3S|*a2X{CUYf9LjMC4ZPA;AKsc_)jdhUr9t.nbAB!l.[,N4XAzi[3S|*F?!TmKFEYf9LjMC4ZPaWr5_)jdjyjhsc_)sejlt%4^iK%/iM=~0kVx
+Vk|1v5l1k1!l.[,N4X#6k4j(nxR*k9t4nc.kK#l;U{m^bXwpg)b[o[Ac>l|*AcI~5nbf^!pwsR4Zn5u;5QU)iE|x!KlUNTbHJ<X-A*i[mh!l!v)P$t/Ui$gDWEan?!Z$i,iEX+{hl^:(@l(d5oE?lcU1.{3HYYnK
+X#vICHnNx5O+X+M[0kCWUUx:X3TH.kK#<u.k!gLs.3.k?(Mj>#^LdF.k$y)6L_{ZGH?#.{3HYYk4j(3@o6q}SHG[.x.z.kkXY+.kK#k4C;8+3G!gLs.3.k?(Mj>#=Pv#SP.k!gLs+}.k!gLsIoGIeV.k?(/Z.k?(
+T*h.gg.k!gLsI9CTI(Q-8f.|I/c(c*bO.k?((t%43G!gLsc1H;.{3HYYgc-O!l!v)P^JcV.%.k@K.kK#gcC/3G{7Ey|wtSDY~D1W!T|}^f_%Of3G!gLs.3.k?(Mj>#k:89qt=Y.{412CZ<#C.{#=ninc.k3I3K-;
+3R!CtK.s33%=u62Xu/(L#l(Q2+&Ju6?~t[&T(BtPtB2?!CtK%<-S%ou[$B&~/9VWx>nc!u4S)!({Doh#!K4:@v#)#),ikf(K#5e2<u.k4(3CLR3G4Wo(yu~N.!#19p:43t4<~w0.c%RD8n7u7m(^7!9Goj!uFQ0o
+#>(W|1=P44v!w:49#G=b!l!uFQ0o#>VW9GpV709G#$9NFS<w;Jp:*^:r3{+/80:Lk+9VRD#$9N8!;2k-2k;6waYUw.#-#$9NVW[29X7i:u-|o1XQRJFP9N^V(ls9vo[;_jB&HXyIeYe=7PyD+pRk2T:l<U|4YU0[
+pVf6wEvU<|z,c+mi+U!n(^v[|4YU0[pV701a*5H*%!ek;d>kHHQymi+U!lL8|4YU0[xev#S1vo[;w2m&yIPk0oJh/%3K#6OtB&HXyIPk0oH_waYUv4RD7P75)+/{!k2U7<qPdnc%RDuK|D.@-X..jQI6f60o#>7P
+75!E;i)^vmqPR[/%3K(_!dly|KRJ-_7P75W#+0BV7YQ-0.c%RDuKBUL_#3(^-X@NBUL_#3(^::,i@S),-_)&)10.c%RDuK9pc)4Y7)?)>u0.c%RDuK+4-_3O7z#A-X..Ir+D/%3K(_!d(dl(:URD7P75!E@V.xvm
+qPdnc%RDuK@.+/#/!o!j-Xc_)10.c%RDuK9p:4#<v(AQ}9-X@N9p:4#<v(AQ}98-(rHRvh)(QV-K+D/%3K(_!dlyp(RD7P75)+Ob)&/%!kc7*L(rvOEv0o#>7P75)x*~;JvOEv0o#>7P75!E:+(z)KP{0o#>7P75
+;[N)vOEv0o#>7P759a,i?sh-RD7P759a6|#54+)0qPdnc%RDuK|D.@-X..jQI670/%3K(_!dlyk{0o#>7P75*1.#7YQ-0.c%RDuK|D.@-X..jQI670/%3K(_!d(dl(:URD7P75!E%.)37YQ-0.c%RDuKAI-XdmS+
++D/%3K(_!d(dl(:URD7P759a.e#-#3(^@V.x7YQ-0.c%RDuK@.+/#/!ov2uKrn-K+D/%3K(_!d(dl(:URD7P759a+/+~)(l{.ey?6P7YQ-0.c%RDuKsDNi,$3Yq5Xdqt=Y.{zD-z.k4(3CG@.k4(3C2pT+R[3G4W
+k13G4WB0-^QXLdB.3G4Wz1(_SPP{0oJh9GSUSW!K!l!uS[SQ9N7m(l7oRM7r9GS[:u-|o1XQRJFP9N^V(ls9d?4r!l!u4S)!({Doh#!K4:@v#)#),ikf(K#5e2)1:u-|o1xl893t0.*4*)zDGn+p(r*5R[+%&+9p
+:4:9#;!CzIn{(_Gcjgw3/#3I3K,R+%&+9p:4:9#;pV70+%&+9p:4:9+|zIn{(_GcLX,{#2uw%.%1;J3I3K,R+%&+9p:4:9+|t4{#.!#19p:4:9:ZwV:U0.&0N8%79N=Y$|Rb:u-|o1XQ_d&0N8%79N=Y>}*2*&*)
+uK,41d%8(Y#1#C-X+%&+9p:4:9:ZWpk9SP.k3I3K,Rnhfdbv2CZ<#C-u[y,!AC3J%/)10.c%*2*&*)uK-u[y(^3O7z#A)/fR-K)1:u-|o1xl893t0.*4*)zDGn+p(r*5R[+%&+9p:4:9#;Pp3Yk1+%&+9p:4:9#;
+F!jgw3/#3I3K#6=b+%&+9p:4:9NH:9@V.xuw%.%1;J3I3K(_83jgw3/#3I3K,R/%3K,>B#GR@N9:w3/#3I3K#6Jw3K#6I<-NAC3Jv9nVGR@N9:w3/#3I3K#6Jw3K#6!S@e-N@N9:w3/#3I3K#6Jw3K#6G!4lLX,{
+#2uw%.%1;J3I3K,R/%3K(_!d(dl(:U@N@V.xuw%.%1;J3I3K#6Jw3K#6!SA>-N@N@V.xuw%.%1;J3I3K#6Jw3K#6!Sox:p:u-|o1xl898w+#+%+(+*+,,4+0BVdnc%,-uK%.8>xk-X..)10.c%,-uK,<L_,<3K27
+-X>u0.c%,-uK,<L_,<3K1Y.@-X>u0.c%,-uK,<L_9pc)4Y7)?)>u;270/%3K(_!dlyP@0.c%*2*&*)uK91)%/aZ1-[2ULZ=u-X>u0.c%*2*&*)uK91)%/aZ11Y[2(o/KCi~,v4/%3K(_!d(dl(:U0.&0N8%79N=Y
+|O:U;*J*.o)b6y=Y$|Rb:u-|o1xl7N.!#19p:4:9:Z1e<w;Jk1+%&+9p:4:9:Z2!;*J*.o)b6y=Y>}*2*&*)uK,41d%8(Y#1#Cv34r0.&0N8%79N=Y>}*2*&*)uK,41d%8(Y#1#C-Xax1d%8(Y#1#CJw(y;rB7q5
+Xd2CZ<#C.{7rT!({@+3J7J.{3H3JI5#$T!({8!-Nnhqt=Y.{zDR[/%3K,>FH8+r;*4r=?&!v)P3#/F2+%R01u#(=%Z7=qY-z.k3I3K,R/%3K#63?zS+}.k4(3CqQr;*4r=?&!v)P3#/F2+&(^JcV=D-*cV(K!Cr_
+rb&P0#%Y&$(+#XcV!Q)K2CZ<#C-u[y,!AC3J%/HQ.k4W(wyc+(+*+,yD+pRk!gN8.@e9_Ke[gg.k3I3K(_w^k1:u-|cnm&yI8s.3.k3I3K#6fcM<gms<o1xl89=Onh~w+*6v!K/a<tz7z9+MHWSW!K/a,k*.yD+p
+yG+BS[gg.k4(3C2pzIc6$|waYU7i:u-|cnm&yI8s,$/%3K#6J53Xh7RhHI5m3hQyw_d;t*t1IId?d?4r+*6v!Kyc+(+*)(B.+*6vnG.#*5Ot3G4(3C9wI/$|8+r;*4r=?&!v)P3#/F2+16%W&5&#(*uO&(^JcV=D
+T#wel63upF7$!K!l!v)P0=/{xDbv#7#5uwy9?y.><n4H6*H2Jh-m@87!2DyI7)m=9_vm)1H>D#=1#/=bH>?u4Ix6;/mRWlD)=bH>BUL_#3.6c9^eaGBUL_#3(^::,i@S),-_)&RcFD-m@8SpRcBY-H_l-x=bH>BY
+9:(r;s..=bH>BYoL-x=bH>BU6v4+/@0[=bH>+4-_3O7z[RGAH>Iu!y+/+~*PTJ!y+/+~)(f<}L@S=bH>VA;{+/+~*PTJ!y+/+~)(f<}L@SRcsD.$81Of9V#:{W=+#7#5!}%/YH.E#:<!#-~F)j[RyI7)m=9_!}%/
+wRs?:|,P.E#A:|,P<!#A+-3h:t.E#:<!#-nh#A:|8/:tT,9V6mVw!n(^~O4<Xd!n(^7Awk,O:P70!n(^7A,iAQk1!n(^7A,iAQB0z,/aB4R*$}(^7A,iAQ~4(^7A)m|J<wz2n{(_SP_j!n(^7A#,*>;K)1!n(^7A
+wk,Oy~zXur(wyMurw?9X89+b+^zeurSHvavSwFv,wH)*wYwRkXWov1|4YUVw,iAQ7%0oyJm=9_m#@2B.,iAQ!QC|(KJP!n(^vNwA6&I/#5uwGMkjADlA4{>QDa>i=~9Lnznzdm!n(^7A)m|JI/#5!}%/+m+b+^0H
+Z*}b)sNAC^JL7!LR3t!TCV!Q1mz7#5:sI~Q2,cHa8v2!#52>%42pCoIE2O|#[PF)B>#5uwGMkjADlA4{b_!S!^F~x.~@u&mI~Dw}W.>r@NBUL_#3(^!QF%+@)1#7#5!}%/+m;+^7)^#1UcyZH&c#H5+aH9Zk.EIe
+*(9+WpHK8_Co}b)s7^*)4+DK!P9+-2HhIE2O&fML>$Ir,iAQ:|8/(dvQ!-!n(^7A,iAQB>kj#69YXd!n(^7AW:yF9!qd70!n(^7A)m|JGR!n(^7A)m,*:|8/}%(_GgQDqby8)1!n(^7A)m,*+-3h55yZb*C^P.Hh
+Ie*(H6S(H-cir4Co}b)s7^*)4+DKIgHLL&k:890K;J}u^L>y0.0K;J8A4^+D0K;J}uk10K;J}uB0z,/aB4X,;J}uz1(_Vw/a2kzJ+-urw?-9v|!v+-urw?vRvDwGv.)*vgwPvj}Mvm{#2pGR/a2k}%(_#+3hWg}g
+%11dJo~_9j(KJP!g!S-XU=lA4{b*JL<S/a<tc@P.Wg}g%11dJo~_9j(KJP!g!T-XU=lA4{b*3vr448/a<tK;*~;J}u^=*~;JD|*L++#2Jo3hz%.E}g%11dJoP.z%<!*$#0)!+{/&E.TY.#!kc76vBt<!l9)(}T:$
+nP+%DEm<9*ls@@dk|x5JhF~E5N1B;-Z|mb(dG*6L6d6PEP;cDJ=}MLE_cpmVE?/a<tK;*~;J}u!QB1CI#C*5e9k+#+!SB0z,/aB4=b#+!TB0z,/aB4k9t49Z-v!n!r^L>y0.-u,E8A4^+D-u,E!n!rk1-u,E!n!r
+B0z,/aB4;9-v!n!rz1(_v44Gv|!v+-urw?-9Rb-u,E!n!rCx2s&,Jt&-~_9j(KJPff#0JSb?M[0k!Csi2d4XjO:>Dx+am#Y{2s&,Jt&-%.fn#2m*!uLsdgQanW!v+-urw?8ut4:q.!#1*2&-50!h.!*3nU*2*&W8
+!h.!*3MiUc3B!z+{/&*2*&W8LN2=!z+{,A,G#1Q_(w*2*&W8,G#1Q_gAjFzd;A.#*5TKjFns!--u[y(^3O7z#A/@*2*&W8-u[y(^3O7z#A41!gF_m6.$*2*&W8!gF_m6Jhsi7z+%!gF_m6.$*2*&W8si7z+%!gF_
+m6Z4:q.!U:|!yVxZyA%/wI#0zy:q.!3*#>,i4Az7z97nRKSWnG.#*5*.wH+1+BS[j!7P75!E}g,i+)+b*;7Yd;+%&+}g,i#$#@^V!Q%.0o}9{R~w0-H$#/*2&-qdk-{<4|#?-|-~V<|P*_04).LrSGRb*2*&W8!h
+.!*3MiTY.#*5+-3B!z+{/&+%<*.#7B.!*3Mi8b.!#1*2&-+-3B!z+{S,*2*&W8-u[y(^3O7z#A/@+;.k3I3K(_w^(3GR<R-N+%<*.#JX(YB:#63O7z#A#=!-*2*&W8!gF_m6Jh*2*&W8si7z+%!gF_m6Gg.!#1*2
+&-7^F_m6Jh+%<*.#9I)d7z+%!gF_m6Ofv4l3.).+P@*2*&W8,G#1Q_TY.#*5TKjFzd(d+%<*.#TK#1Q_8b.!#1*2&-TKjFObz7c{N8SUSW8A.!3*#>,iRQk,+J:|8/8+x[%.0o}9(wN8R*{RfdbvJt&-{Zqd70G[
+-{-}.!NYRb*2*&W8!h.!*3nU!U=b*2*&W8LN2=!z+{TS=b*2*&W8-u[y(^3O7z#Anvnb*2*&W8!gF_m6.$|x5J|{!T|{!T>-=b*2*&W8si7z+%!gF_m6.$|x5J|{!T|{!T>-d470G[.).+P@*2*&W8,G#1Q_.P#/
+!Y=b*2*&W8,GjFzd-b#/!Yz7%27oRM7r+%&+}g,iRQk,+J:|8/8+x[%.0o}93ik8t4R[G[.0k1}iv(%/wI#0zy(wG[.4(lt4^L>y*;#,*>,*<N#?,!qd70G[-h7$8+:u-|!K!n(^7A#,*>,*8dOH!n(^7Awk,OII
+4r0.0K;J}<@g*~;J)10.-u,EkI-KIrkLyMurw?#<!gN8no_Kzk5Rv%;Ey*+%wH)*vgwPvj}Mvm[vva;Ey*+%wH)*wYv2[vt*t1B+CE*;#,*>,*<N#?,!I4M<E{*#D<!n}|!v!x!u!v+v?*!E!h.!*3Mi-Xmi3B!z
++{?)!E!gF_m6NiuKsi7z+%!gF_m6NiuK1*&/&1:iIu-XmiDDkn:iVA5G/U!Ey.}(+/w55GG?#=xk-X!E91)%/aZ1-[2ULZ=u-X!E91)%/aZ11Y[2(o/KCiuK-u[y(^3O7z#A)/-f;[.+1*-X;[.+oXNiuK,G#1Q_
+-X9a04,E*a&2Mi/UyS(_!g!z!s!u#)!v!x!u!v+v@v!E%.0o}9-X!EF5-Xmi6*-X!E%.([#C-X!E-u:}-X*V#+0Ee23?!t!k!{!z!x!g!r50Ls6(S9.!*3nUmA+2*~?mI~!y8~+/xko(!z6WnPiGmSEa3a51c*NH
+3SF(0o}9o(D#Yl2;0-Zn1G8a1_)6)<@vF(0o}9o(.d8},sC_3ani705C3Sl9P$9!0o}9o(F%,OF(0o}9o([1/o:?yJ/&.E)a[1/o8R/nC[AKG8l8!~#)!i~%!y+v@vLsJO6**:k!=N!k2U7<0lc*NH!E!hc*#7!k
+2U7<_w=O9a)6xszQ2U7<8s66-O%.fn2S#0v(%/#.!k2U7<~X)j59~:6-3N040,9q#>t:tK#m%X%y(52+&7%AtPtB50Jt&-3RE@.!*3nU;yCVy.}(+/w55GG?#=xkI^M3!gF_m6.$6;~>Dau=,$si7z+%!gF_m6.$
+6;,d>Ci[S$B{1*&/&1:iN?(du9u,^tCV,e[^1*&/&1:iVA5Gxr5ImKtIx,??91)%/aZ1-[2ULZCk<!91)%/aZ11Y[2(o/Kj??~-u[y(^3O7z#A/@2g3O7z#A*a&2nUhJ8a5Rw:M4.!*3nUA+Da4>-m?mXT{}8~+/
+xkI^!T5;!z6W?uu9u,5(5;w}==51c*NH3SF(0o}9I^,ng35^5;2;0-Zn@(!Y8a1_)63R!CF(0o}9I^!T5;.d8},s!Q!Z8ani<v@vl9P$9!0o}9I^X{F%,OF(0o}9o([1/o:?yJ/&u,)a[1/o8R/n/@5)8a+y#>,i
+3R!C%.0o}9I^@uF5I^Da?u6;!T:F5^M3^t[^%.([;s6;hO5N621m9L-u:}I^i[!n#+apSA3acL&+I^@u)%#1?u6;T7>l:Z2!;[)d+/<1@ot;-P&T3$(8#J3!%Us5%lu6FTJt&-3RE@.!*3nUC^2FLN2=!z+{/&5[
+y.}(+/w55GG?#=xkI^<!!gF_m6.$Dh5=2F![MLsi7z+%!gF_m6.$lT5;q!5K??1*&/&1:iN?(du9u,C(!T>-~@+%&/&1:iVA5Gxr5IK71Cu*5Q91)%/aZ1-[2ULZCk<!91)%/aZ11Y[2(o/Kj??~,G#1?uDh>C.E
+~?*_04,E*a&2nUM2Cr5Rw:M4.!*3nUA+Da4>-m?mAs!y8~+/xkI^u,!z6W?uu9u,m{u+B-8a51c*NH3SF(0o}9@(<!D#MT?z#20-ZnI^Cq8a1_)63R!CF(0o}9I^ci4-6xv1Av3ani<v@vl9P$9!0o}9I^DaF%,O
+F(0o}9o([1/o:?yJ/&mK!C)a[1/o8R/n/@tF8a+y#>,i3R!C%.0o}9I^S%!CF5I^DfX)6;6/O65ZNL!C%.([;sDh>C.E>-?e(o*;I^CV!n#+apE.8acL&+I^u,)%#1?u6;tzI~1H9L)cOH(d6;!T|{~Du*u>tZuL
+&^(1%Mu6FTJt&-3RE@.!*3nU;yDaLN2=!z+{1V!Z!Q0k9@#B}(+/w55GG?#=xkI^<!!gF_m6.$6;!^tG.E~?!Csi7z+%!gF_m6.$6;!TmKNB0q>--f1*&/&1:iN?(du9u,6/.E~?iF/Kkn:iVA5GxrtwhFtI5NNL
+!-91)%/aZ1-[2ULZCk<!91)%/aZ11Y[2(o/Kj??~3O7z#A*a&2nUC_3a5Rw:M4.!*3nUF}6)+2*~?mXT0q!y8~+/xkI^LD6W?uu9u,(f5*-d==51c*NH3SF(0o}9I^u,D#!VZ%#20-Zn@(Sj3a1_)63R!CF(0o}9
+I^,n4-6xv1I^Cq8ani<v@vl9P$9!0o}9I^ci6G[-F(0o}9o([1/o:?yJ/&mK!C)a[1/o8R/n/@.D8a+y#>,i3R!C%.0o}9I^C*,$F5I^i[?uu9u,!TtfhO9L%.([;s6;!T|{|{~?;9(o*;I^5;!n#+apHM3acL&+
+I^,n7m&+?u6;g7!Cg2@ot;(L#r/6%a()uPu6FTJt&-3RE@.!*3nUDay.}(+/w55GG?#=xkI^A,,$!gF_m6.$6;mK^80q!^[^si7z+%!gF_m6.$6;1W,d?3u.DA6K&/&1:iN?(d6;txW.u+[^1*&/&1:iVA5GxrDP
+O6x,??91)%/aZ1-[2ULZCk<!91)%/aZ11Y[2(o/Kj??~3O7z#A*a&2nUC_3a5Rw:M4.!*3nUmA+2*~?mjq4-8~+/xk(wF|A,?z6W?uu9M3^tDau*==51c*NH3SF(0o}9I^@uD#q!2;0-Znx;8a1_)63R!CF(0o}9
+I^<!.d8},sHM3ani<v@vl9P$9!0o}9I^<!F%,OF(0o}9o([1/o:?yJ/&u,)a[1/o8R/n/@5)8a+y#>,i3R!C%.0o}9I^MT,$F5I^DfX)6;!T|{m{K7,n9L%.([;s6;1W,d?3C+?e(o*;I^<!!n#+LB;ySj3acL&+
+I^2F)%#1?u6;T7K:3a6C893O05uC3R,S.s33%=-X(L#m%X%y(52+&7%AtPuQuE&T3$(8#J3!%Us5%l-XuL&^(1%M-X(L#r/6%a()uPe2?@04).6Y<Y(w3O05uC^L>yc7#B+Rc{^7#57!.$/#.e66S_Ot-a.qKGFa
+^JwaYU%2HhS_HN#+H92>v4-a9k@d^JwaYU#+}[(rc%^7#5kw702>I:%(|4YU%#w.ya+6fdbv8j)z,q7u7rRD8n7uR1RG-97l%$SUSWqs7uSZHa:K:vs>89do,7O|66iq+D&3w^p(douyKGFarP-9douy4z7YQ-9%
+*Y8|,59!Pk0oLuDw9&#89)6rjisz_+s|2e9L3S7}^VA?9RARjQnbRD7}c?t4q5Xd3O40H*M&qd703O40H*M&xV=Pv#Vw#=,b3SJt&-4A4%SQz9.JHWSWnGD<!n}|!v!x!u!v!yS[~N7l%$80:Lk+9V*2*&*)#$#:
+8!;270;6kp#@}d.##$#:^V{RSQz9%2HWSWnG.#*5*.wH+1+BS[cb7P75!E}g,i+)+b*;7=GR1a*5H*%!cn!Q;d>kHHzI(KJP!lL8P@#=#@?w#>,i3RRJ?m+J7m,!4A4%SQz9.JHWSW!K!g!z!s!u#)!v!x!u!v!y
+RQ.>#@?w#>,i!QaOVK#:VW#+#$#:8!7i-~,5#5k:+D;*J*.o)b6y=Y$|8+:u-|o1XQ.>#@LGP?)=)!&0N8%79N=Y>}*2*&*)uK,41d%8(Y#1#Cv3B6f+3O40H*M&,s#=^Wfdbv;$!ldb[B7!/&3O404|#B_VR[gi
+:o:|8/waYU7hd?7%0oyJm=8H!l!~#)!i~%!yh,+r!QC|(KJP!l!~#)^JcV!C[Bz77l%$SUSW!K!t!k!{!z!x!g!r_VRQ9M:Lk+#/7}^ViefL:|8/;A.#*5?@04).4|#BfX+o|hYUVvvo[;_jum#>,iy~*^#=,b3O
+40H*M&|F70#=#@?w#>,iSH#=#@?w#>,i=W-_:|8/waYU#=#@?w#>,i=WAr#=#@?w#>,i!QaO(tVwcA3O404|#B?w#>,ikX+J;72kx[sDzn+y7%0oyJm=9_}g,i+)+b*;)Kx[C|(KJP!l!~#)8~,i(ix[%.0o}92Q
+=bx[F52Q=bx[-u:}2Q=bx[!n#+LBnhx[sD.$*2*&*)?@04).4|#B?w#>,i=$9Y9Vc{3S%.0o}9o(F5o(?uyX6*:>44(p=$!Q%.([[C;9(o*;o(!n#+LBAK9YXd3O40!Q)%9{)!9!cn3{6*Ot%2!bCTG!P@=?;Xk4
+j(o)8F9Y=?;Xk4j(eTS,SQkT.%z<SW=h&+?(SZHaX6U)iE4Ix6-N!h~%~(!-=i+^VQ#&KZmb(dG*6L6d6PEP;cDJ>Cdt}Fq+cn@}EYB-E^mPHJSOd?4rXd3O40?wm&S~T#U5(w3O05|V0.VKT!({(W|19M|4YU3O
+40IF9q4Z_>3O40H*M&9T3O40LrSGTF({?@04).@g3h(dqaGj7!:sv50*0507&f.Q4&!z@(T,zp8o4Az79N11|o:#7oRM7rH>Jt&-S[^:B;(w3O40H*M&HcJt&-#$9N(W+DjY!CzIn{(_8+9NVK9NVWc7#B+RjY11
+|o)!,$#5fc4r8j)z,q7u7r*2*&*)8n7u41!z!zRG-9[BSUSW!K!l!~#)!i~%!y!yS[89O[;$80_VR[O[;$p:*^/&;$!ldb[B7!6x4Az79N7mSUSW9+|o)!RQ9M#<#$9NVWc7#B+R!t!k!{!z!x!g!r_V#$9NVNby
+#5_>8j)z,q7u7rZ;Zk!z!zjQI6703O404|#B__GR3O404|#B_V:|8/sK)z,q7u7r3O404|#B_V6G!k!{!z!x!g!r_V?z!zq58&?w#>,ip:RS7m,!)S)!}g,iy~*^6x4Az79N7mSUSW7s?w#>,iRQ9M#<#$9NVWc7
+#Bbx,!#$9NVNby#5_>8j)z,q7u7rc{6x?z!zIr3O40!Q)%9{)!9!HDH>)%**-NN^Co7l9M!Q)%#11*Ot0.&0N8%79N=Y$|}%(_0w;!H>:ZwV:U2>I:c2GRax1d%8(Y#1#C#$H>:Z#28!-N3O40H*M&Hc:Z#2R[0w
+k1:u-|o1XQ_d&0N8%79N=Y>}*2*&*)uK,41d%8(Y#1#C1(1=Vq{RSPfe04).IF9q4ZRj^R?l,b3O40H*M&+q3O40LrSG<wn|=?;Xk4j(o)|1.>j#ixv#Vw!z!zT_0oRE&3GR3h-NEYAp)z,q7u7r*2*&*)-q#@}d
+.#?z!zOt#=#@?w#>,iSH#=#@?w#>,i=W-_:|8/glDw|U8oA6#@?w#>,i=WAr#=#@?w#>,i!QaO41!z!z_>SQfl);7oRM7r3O404|c;HaR[gi:o:|8/Rb+D[Buy8~,i^JglDw|U8o!K,A3S%.0o}9o(!n#+LB.E-u
+:}o(F53i48!z!zjQ)^cr)z,q7u7r,A!t!k!{!z!x!g!r_V?z!zkwf60oREzn+rB0z,/aB4t.nbiK%/iM!z!zc1<!k++D|);?&3|P*_04).LrSG8+(|B1CIB4R*k9t4d470#=#@LGP?GR0.&0N8%79N=Y$|8+:u-|
+o1XQ_d&0N8%79N=Y>}*2*&*)uK,41d%8(Y#1#C.w#@LGp9+spVf60oREzn?@04).4|_t3O40H*M&,s4:n{#6t.nbiK%/iM!z!zc1M3k+|1*_04).LrSG8+3O40H*M&3e;JR*k9t4-zfe04).H*9!{[U5(w3O40Lr
+SGGR3O05|V0.VK3O40LrR_(W|19M;72kH>)cOHwaYUVw7JqaGjpE*_04).@g3hQ3C^j4+D13I$w_ixv#VwLs(w3O404|#BBB4p|1(#LsSHLs:|6}{IqY[w(wG[0*0507&f.QTk)^~*mSD)}[(rc%H>LsKZ6W1*,$
+#5}B%0~*mSD)}[(rc%H>)cnw#5OK#-KZ6W?ujY}[(rc%wZ,$5Jdtc#H513H-5Pd[5^Ir3O40@gCJ=Onh~w2CZ<0g040,9q4ZT!({OtT!9j0}.s33%=^JRb3O40IF9q4Zr:r<>}(L#u%X&K()(8%o#U%R01u#(=%Z
+%prnc~3O40?wm&S~T#9hr<>}(L#u%X&K()(8#J&(^JcV=DT#k:3O40?wm&|VG~z%m&3O05|V0.873upF7$($&~%G&K()(8%o#Uli+v@v/a2k9k+UJR4%!lG[;6,,O|!K#A.!9!bP/%ys.qXP^JGR/#.e!K8}#.bP
+/%ys.qXP^JGR/#.ePk#=bP/%ys.qXP(i!lG[({NH;#+F+HSH;$+e+SJP+W@V#7h-4<+D;$+ek1;$+e+SJP+W@VNH!lG[({+|fdbvO;,G~kWc+aOt/#.ePk#=~j05ys.qXP^JGR/#.ec&3C~j05ys.qXP^JRb:u-|
+o1XQk,o4&3-^~j05Wc+a{I~IJxZjWc+agss9d?4rXd!lG[*(B*HQ#=,G~k!K!lG[/a<teV#=,G~k!K!lG[/a2kcV(K!RPSbP#1)/B.O;,G~k!K!lG[/a2kcV(K!R364L#-vn+qXd!lG[#A.!9!!K*;ADyF%1Ot!l
+G[;6}%(_;6:t:L#A.!9!bPx+Y+G[/a2kcV(K!R^JcV=P%/8s8~#+{#2>8+!lG[({#7#$*;#6VW3Y=Pw/pUt4@KG[({#7#$*;#6VWyF%1|hYUS14rXd!lG[8}+m*;#6Ot!lG[;6}%(_:rHU:t:Ls>zpojG[/a2kcV
+(K!R^JcV=P%/R[-^bP[?{I9V8}#.bP[?fcM<7N2>GRxV=Pv#+Mt4|hYU!lG[({#7#$*;#6(WSP_j!lG[AQ)!))*;#6Ot!lG[;6GR/#.eGH%/bP/%ys.qXP^JRb:u-|o1xlzpojG[/a2kcV(K!R^JcV=P%/R[-^bP
+[?{IAQbP[?fchc+q!lG[({#7#$*;#6VWyuSP_j!lG[2d-_GH3s9p#67!Nh-q)z~S4<sGG[;6GR/#.eAC-^#>bP4+ys.qXP^JRb:u-|o1xlSQz9.JHWSWAC-^#>bP4+!K!lG[/a2kcV(K!R^JcVEz3s9p#6zEnj(l
+T!9jW6*5!QH(1d7suK!K#$#(!R#%#%#&!N!L!Gcak--*|PR;%7#$T!({8!kp)z#$T!({VW0[sk=V=f4gNh,$T!({fcd?hc+qSQ*;(_7oRM7r!lG[({#7S[OT,$T!9jW6*5!QH(1d!K*;AD!E#(B+!P!L!R!K#$#(
+!R#&!N!L!GcaPePp8t9p(_|PR;%7#$T!({8!kp)z#$T!({VW0[sk=V=f4gNh,$T!({fc4r4a4com4gNhXlYUNh9Y!lG[*(B*7!!nnf=0)!({Doh#!K4:@v#)#),ikf(K#5e27!!n!h~6!k!g!j#)!i!u!r~4!h#)
+!h!u!j#!#)!i!u!r~:mI~Dtf!TNLiFF>~;|{K8t{~v~G=+#2#,9p-_+%#/9s))zm8C44Ot9GH*138+:u-|o1XQ=P44H*%/B0z,/aB4iepVvxzdw#ylsDzn:K:vs>}*D#9GJ)0E=b}*FD9G@gAk=b}*BY-H_lF!44
+BB#-=b}*BU6v4+/@9G!Q#7#6ikt4^L>y0P9p-_+%))RG-9zm8C44SUSW!K!n!hRQWo#,9p-_+%#/9s))zm8C44B.!n!h#$zmVW3Y{R~w#2#,l{Z<vu{P=1,A-m0o!v+>0HAD4I6K7!9G(w!n!h#$zm(W|1=P44P@
+9G3R.>B}}*27~}4@{O,PKZjt3{w:VF,P+-+K-H_l35,R}*BU6v4+(t3>!n!h#$zmVW9Gdy/el@>?4{6r=1,A=1,A=1VH}#,P{v);zIybRkk1}*D#/e82vo(_*Lc!H)da!K9G@gAk~}0o!v+>&f}AR[}*AuzI-lzn
+VF,PKZmb,,&3v4}*BY-H_lk1}*BY-H_l~Wv4;8}*BU6v4+(t8+}*BU6v4+/@0[pV70#2(_Rb|1=P44H*13-N9GH*%/:|8/yt;Jp:*^#=[zyI7)m=9_gR8hZK)K#=gbC|(KJP!l!~#)#2#,(i#=gb}4#/x9lxch~#
+#=gb!y+/+~)(M[![ox#=gb!g7z8?/&zm1_pu;?.$zmYS#-H*7J#=#,9Y9GH*%/|tia4H6*YS#-H*%/::+/+~)(C/4I6Kt.I6709GH*13Rb9GH*%/B0z,/aB4YS#-H*7Jyut4^L>y0P{Zqdk-GLG[0P9?G[0s0c,~
+qPRh?!!K!n!h{I0P9p-_+%))v^o:9YSQz9vvz<SWz?*s).zB*s).+BS[8&zHzJp:zXur80w<+-urw?9X?l#5HX(wG[0P1L|PHVzQ4XzS~L7!+b+^zeurSHvavSwFv,wH)*wYwR3?/a2k(dzf:UvavSwFv,wH)*vg
+wPvj}MvmOt+b+^SH+b+^7P75!E;i)^vmqPR[G[0P|K.>#5HXP@#2#,l{Z<>}+b+^z30P27z30P;oz30P0Y~4!h~6!k!g!j#)!i!u!rjQI670!n!h#$+b+^8!Rb#2#,9p-_+%#/9s))+b+^~4!h#$+b+^_Q=b!n!h
+#$+b+^VWyut4R[/a2kGR/a,k7P75!E;i)^vmqPR[G[0s0c0>|P.>#5HXP@#2#,l{Z<>}/ar$v50f27z30mAkz30sAD!n!h#)!h!u!j#!#)!i!u!rjQI670!n!h#$/a,k8!Rb#2#,9p-_+%#/9s))/ar$$}!h#$/a
+,k_Q=b!n!h#$/a,kVWyut4{Swf(_!s!{!y8J#)!m!x!k!k}~DC~AtTU%K7M3!^[J89!s37w:@v-m2=47RCh0n{ADZg#CeS0yCJ=O.EbPy#3t00&z$%.w[-P?Z_-q;+2UUtnw*;.e8~m#/3.s33%=-Xn~Vz(w3vOa
+X^/@c_~X+u~9.q&-*M#=!_!R!R#A#A#AH*Ai+b2d#BH4#7!R5tq+4+!R.I!V!R*k+L-/2d#B!P*a*)!P(i89%.+~#?%00K2=t:3S=O!EEJ#>)/,1-O*$(_!vEe.w-O!X!^!Tj_/q!S!V!Z!a!X!Ya^hO!X!W!Z-X
+<veT);3a!-3S=O9aAi-/2d-!*aPh!T-XcA9aAi-/2dZL-q(w!y~9cV(KC^.I1|.3~W3a!-3S=O9aAi-/2d-!*aPh(h,1-O*k+L-/2dZL-q(w!y~9cV(e!Q.I1|.3~W3a!-3S=O9aAi-/2d-!*aPh1|,1-O*k+L-/
+2dZL-q(w!y~9cV(K4{.I1|.3~W3a!-3S=O9aAi-/2d-!*aPh!X-XcA9aAi-/2dZL-q(w!y~9cV(K!X!Q.I1|.3~W3a!-3S=O9aAi-/2d-!*aPh![-XcA9aAi-/2dZL-q(w!y~9cV(K![!Q.I1|.3~W3a6C89!y:U
+(dyI7)m=9_*k+L)K!y+L!QC|(KJP+W!s37#-!E=b!y+LBGdV9jv5364L#-39(_}O!S=b!y+L*v,j.e.<,y?@+L:|8/(d*k+L*Y-z_j!s37#-H*M&{dG[#A.!9!)*364L#-!Q}v7X~4*L*N8{!p!y!u!t914I.o!K
+3S,bDa-m2=/@!s37#-@g-7+(A?Z6~G=++l%.+~#?%0zDz7z9&3HWSWH[Jx#+#?%00K2=SZHaVO=e=X4g!s37#-@g-7+(<2=O6XLRcA6Xc{/@6X=_,74|XH9YXd!s37#-}d#9+^y~EmgoojG[8}v/364L#-!Q}v7X
+7!:r8s8~cA.=yu+D*~-w8+:r8s8~cA:u-|o1XQ=Pv#*W*N8{!p!y!u!t%.4I.o!K*~XkiepV70;6GR/#.eGH8~#+ys.q4a/%^JGR/#.eGH8~x[-m2=SZuy4a/%^JGR!FyF%1@g-7+(I97KRb+DGH8~x[+I-N>D{7
+Sj}%(_L?3R!Ct<EJ#>)/VW<!t<!y}5#5$|!y{31du6?~t<.m#8[B(t.d*(3,Ph.m#8[B)/VW<!t<WaJx9du6?~t<!ldg_yei!CEh2=u6?~t<,<-|+*W<u6X3(j+^%.+~#?%0zDz7z9&3HWSWGH8~x[-m2=SZHakX
+7#,*#$6X#88!hY=V=f4g!s37#-@g-7+(11fc4r!s37#-H*M&I4c~!s37#-@g-7+((wyF%1@g-7+(G9c~+l%.+~#?%0zDk::u-|!K!s37#-}d#9+^Ot!F!s37#-@g-7+(Ppw_d;+l%.+~#?%0zDf+~w#0#7P&+{))
+)^4k_Sw:c9H)daDKIEc),jF+)^4R-N>$XlYU1a*54|+%H()*!H#.!_!H!S!Uv2H2H)c),jF+)^4RHG>r)^4RGvC+{W^M,-!n7-#2A6,-7!2!!XRsT,SQEw@~!F1aHaWo;!-2Co!V@eHh1a*5?T#C9!A6,-RCDkGv
+MT!^!W!^!Y!Z!U!^!Yxev#1a*54|+%H()*!HciZLWe{W=+,-#C9p#;!K*;#;,$+/#6Ot;8*;#;|4YU3Yf+~N7l=P,{80:L*;#;<2!{#<,R+/AD@V+a.n-O!m!k!ze2{#2>GR0-SH0-m+0aSH!F0-m+0aI9NB-d3h
+ej0-::Do/okeeA3Y9?0-::Do/okeeAK8qP|hYU0-m+0ak:~w&-*M)V!K+/#6ZG.n;s,-#C9p#;A6:SGR:dIFm;Ar+/#6h-,-#C9p#;!K*;6dAr+/#6h-,-#C9p#;!K&-*M#)*;6dAr+/#6~h-9,-#C9p#;!K&-*M
+SH&-*MIFm;Ar+/#6h-,-#C9p#;+;dg#B8TGRc)#?#B/oIFm;Ar+/#6Ot0f|4YU0ff+~N7l0r80:Lk+9V)T!_*W#:)V!K+/#6_R7N2>GR_0:U!F%#I:.Q-d|4YU%#t4^L>y0-,)3K9s))SZR[#=!_H(1d)*#(!H#.
+!N!G7Yixv#!E#<#,#BwL)!J*!_!R!R^JcV.>pV70#=!_H(1d)*#(#<#,#BwL)!7Yixv#(tv4#=!_H(1d)*#(&-*M#=!e!_!R!R7YQ-89um}0.$;$[2-_M|}0^e+N:dwL)!kX+N}/G~-N;8!lG[;6waYUnz(L#z%z
+&zrL&J%M%C%[$%&9#M%Y%GuZyb.!9!bP/2%4;$[2-_M|}0#>&((%%P-V&x&C(6%[$%&9s(s-&hto-S%@#Ls,&d&z%U&w%s%v/F%b!C!o!j^JVw+*,l(d!lG[/a2kcV(K!R364L#-!R^JcVW6!n7-#2A6cUcW(T.I
+1|wAM&3E:u-|o1XQWoM&T_#=bP[?B@_RSQ8~9!.I085ZHakXWoM&p:B9.n;s&-*M)VA6Ot;80f|4YUnz(L#j%F&9#M$As4&6&h%P%~/8(?(>-S&n&9%N&k$+&=$/&9%P%P-V&x&X^Jv4;8:u-|!K#A.!9!bPx+VF
++a0l.nl5|4YUnz(L#j%F&9#M$As4&6&h%P%~-T&h#O0%s6&n&9#N&^&K.v{R~N7l+J}0.$:u-|;#)!}/0.yk+a{#2>GRwL:#waYUwL:#7i:-k6c~w.yanz!E;$[2-_M|}0&3%^$%&9%Ps(s-&hto%y.v9Y9VnzrB
+2+/7(>ta$+&(!oz0=K4b0>&T(5&9%P%P-V&x(1%C%[rU!Q.I1|9YXd!s37#-!Q{Ak5y~*^Nh4A3?#;ppcR}d,E8@!s37#-H*[-P?c^)KSQkT-lz<SW!K!s37#-@g-7+(S[89-@;s1a*5}d,E8@9+6Y9?c_cUcW^J
+^JcV(#6X%2c^)0Ot!K!s37#-4|yBz$0}.s&z$%rP-96X=Sp(#;uyrP-91a*54|v)!K-@[C!C#;>k_XqPAM=V=f4gNhRCq59VNh9YXd!s37#-IFJx0-#2y~*^:a(d!s37#-W9#3R[:a}%(_.$!s37#-4dg~GR!s37
+#-@g-7+(#$!s37#-4dVM!-*>@g0V4cY)SH6X7@-932s-(8%W&8%r&k(S!-*>?w,P-^6XY)p(9+?wSH6X%2zI^I(3GR6X%2c^r_#avO-9(L/5rZ(8#J6)${$}9n!-*>H*Do/ogc(w!s37#-H*Do8Tc^(i*>:X*sgc
+(w!s37#-:X*sq?:U!E$S#j#g$S#j#grP-9!E$S#c$&(iv4!s37#-IF#/#,*>|J8+!s37#-IF#/#,*>;Kfc4rXd!s37#-:XARdI*^.$!s37#-@g-7+(S5kX-l|4YU7i!s37#-4dh0HVQ737#-@gCJ=O!s37#-@gCJ
+2pT+3?zS(w!s37#-@gCJqQ!s37#-H*Do[3,StM%y(P%o#M&[(1cV!Q(i!s37#-:X*seSGA:u-|o1XQ*_+L!_/!7uIIM<!s37#-IFJx0-#2AVs;9us=i8z!;(}wSQ|k2P1a*5!Q#1H(1d9+cQ*59+H*9?c_9L!E#$
+#(!a!H#=#&!N7=7zVO=e=X4g([+L6wObkw70!F([+L-BFHj$37#-H*Do[3,S#jtn&42+/7(>ta/9Q737#-IFJx0-#29Tr;*4r=)*$A#p&9%N&k(1%C%[uZ&42+/7(>ta(1&Z%[%yre%E&8$S#i#X&4%R2+&^tq%~
+!oz0&T(5&9%P%P-V&x%m/GXl85dyn~!k+0/3#j%F&9#M$As4&6&h%P(C&I&h&z$0(Q&T%w&I(8%Pto0(:q#5*y3ESQz9([:UHWSW6s;(SZHa3?+/AD(rFw,{,)3K9s))([M<+DzS!CzIGS37#-@gCJ8iixv#v4+/
+(_Rb!y+L::Ai!o,s+/#6?@+LKZ+{dXa+nh!y+L9RAR7!#>3h(dqaGj)1s@d9o4&3}<+LOi3H#90++M-N!y+LKZ+{#/3I*)w[>[SHqaGjpE-l3hI$,dSHzSPp!s37#-@gCJI>7$t*t1iNkw70zS!CzIGS37#-@gCJ
+8iixv#v4!y+LOi3H#90++M-N!y+LKZ+{#/3I*)w[7K8+:r*y-30r8}2>7i!y+L!_/!7uy~rq!k+0-O=K4b0>%^$%rG&^(P%o#M&[&5$,%C-S#M$A()tl(#!oz0&[rI%{%q#L(4(!/F$As4u#uO+g%C.s%Pto%ytq
+(C$$%{#M(O&J!C!oz0%A%Vs.!C$S#i#X(iron~!k+0(w(r-9-Nn~!k+0k:|17##5*yP@!s37#-H*Do[3,S#j%FrG&^(P%o#M&[&5,W(%#V(i!s37#-IFJx0-#29Tr;*4r=ACrq!k+0Xl859Y!s37#-:X*seSw0!s
+37#-H*Do[3^IQ737#-}drqVz(w3vQ737#-IFJx0-#2I4hc+qXd!s37#-6k5u!oRAGH3saN~R(d!s37#-!Q{Ak5qd70!F{APpw_ixv#3YpV70!s37#-H*;+2U/2GR!F{AI9,cp:*^2O2=YS.e8~9MCX8#-^#$IEIG
+#7!K!F{A!L8!)6*4R.CX!CzIGS37#-4dRZ9V2O2=|j/?h!=Vh%+m{ACs37#-4dRAOt;8}(|4YU{A#$!T8!Vwpo:t/?Io8tRh.JI:!F{Ak1poB#S+;3qj,ck1po(d!F{Axev#{A#$)b(WSP_j!s37#-@gl*))Ot;8
+!s37#-4dg~}%(_{A(w!s37#-!Q{Ak5qd70{A#$!T8!8+!s37#-:XAR{A#$!T_Qxeo:d470!s37#-:X*sNlRb!y+L9R#+LZ+B=b!s37#-:X*seSS1qU70!y+LOi#=,NLZxV*_+Lyg,{.H))8dOH!y+L9RAR_>!s37
+#-:X*seSw07i!s37#-IFJx0-#2I44rkL!y+L94:4q;LfOt;8!s37#-4dg~waYUv4!s37#-IFDx,5#>m#uy$A#k$A()t_^J8+!s37#-:XAR!s37#-4dRA8Ev#Vw{A(w!s37#-!Q{Ak5y~*^}(h!=Vh%+m{ACs37#-
+4dRAOt!s37#-IFDx,5#>m#uy$A.s33%=^J|PGS37#-H*;+2U/2w#/?Pp!F{AP@!s37#-:X*seSGA!s37#-IFJx0-#29T8Fdy=O!s37#-6k5u!oRA5JOt8id;!s37#-:XARcFt4HQ_j!s37#-H*9!{[3?:a(d!s37
+#-W9#3kX3@*?waYUv4!s37#-:X*sNl8+*>H45dD9Gn=LGpqaGjH9AfHIC*3hVw^Q(w!y+LKZ+{#/3I*)+aR[!s37#-4dg~GR^QSH^QI97K}%R./?(w!y+LKZ+{dXQ1!-*>4|d#mdHCq*BD}(&f^QAd9Ldmz!/@IE
+c),jw7}n_.(tzIGS37#-}drqVzP@!s37#-}drqVzze#=!-*>BB+/gc+}#7P&+{))}()1*>AP+/gc+}#7P&+{))^Qq5Vwy{;$3R4H+/z1ADRTw40?pN9s0?#:y!,RP.<dnj(l!z!g!{c!H)2O|#3?x%F/~^<2C|(K
+y{;$e2j|x$~gQ.,k412d@%~S4<89LZ#.!j,$LZ#.!ro(nh89*p+wRJ,b}b)s9*9Lpe~r>phw#=w:,c~X)j!z!m}|!i!u~1!x+v?*tKuF-SuHu$~:mI~DtH>-u/(Lubu$~:mI~D~Du*t}uz1!#Ms-&Mu6DC~AtT!K
+|{m{th9LtK#m&A%wu^u5u%F>~;~D!TtzJJ??tKuMu#uOu$~:mI|{~D5KtJuL/6&hu[tbDC~AtT~<5*A,bsx!^L>y4I#6}g!K#47!NHG[1)6*R[0S0}#m(H/F(Ou~waYUDX!n!y!|HDqaGjH9hJIo#4HK}Q(3GvFr
+1mcpw.ya!z!m}|!i!u~1!x_U#78!|~Ls8){W=+;$n%eYp;(d7z#>VQ(W|1{QeQTmbW3Sl?E#ws~twulZwy9xbCr,4ZCVHH48x%bNGHCDOR#>VQVWt5|hYUt5^L>y;$}4))dI*^,R2d@%S5kX!C(_qmTmbW3Sl?E#
+ws~twulZwyR)48x%)~2eVQVW#69Y9V#6{W=+7t#4!Kx_w92D!v=W+ICox_Q.Dx,l(d!P#-H>##pIDx,lqkP.waYU3Yxev#{)6r!v!Qq11rxdHh#-q$&f.ofn-2Co!vH*wc(m!Qq1BNnVQ3#-H>BNEzDx,lCo!vH*
+4k8sDx+a{W=+7z4Zx_<m=29W3{,)OtLZ#.z0!d(d5m|4YU7iLZ#.{N3@)^#.z0T+Q.)S)!n%!KLZ#.!j7!c5.ofn2!7t#4!Kx_zlp:*^E}c!H)dM=1);Co!vH*4R%4.ofn#25Z?I>uHcw{^+F7.>F9Hs}+Txe(?F
+{+9MpDHsIWn>U*4I#6HsIWhyFD,-Hsk4j(eTVvc~Hc{h3Et4^L>y)^#1!UcnVZ7>3{,)faOtLZ#.!rI9(d5m|4YU7iLZ#.!r(wLZ#.!rh7n})S)!}4))LZ#.!r7!,s%#Q3+6#6k4j(eTy2IWn>U*4I#6(XIWhyFD
+8w-Nnh#6{v^!pwsR4ZpJ{2pM1xT+11Wp(X}+Txe(?FcndQHhgb!~d[5^,$cnq2HhgbQU&f|$#6Gn=LDpIE.ocSIE8~+K!UGHN3Hi!~;-{W^MF)!VcnVZ7>3{,)fa7!+*6{[z7t#4cn9L7t#4S_zl%2w#hXd;)^#1
+!UWc6{^7+a3{,)fafcvo[;_j#8#Dcn0l7!IDH3H+%2Gs;y!^![!^jaHh%#Coa^=~!V^vCo!W!V1m![%(5)!V|hYUcIc9H)c),jF+c;{W=+&0.o!k2U4YzDz7Ew@~!F7z#>(t7zHa#>VQ#&k4j(nxf+SQEw@~!F2d
+@%Ha!C2d@%S5k4j(nx{R~wOUAq/}3{AX=1,Azk3?w:4HILPP89~9=01UBM[PE~(dG[0zovNBnh89!x;!d_c:A61Uob=1EO##d[nVT+soc3#D8vh:QDqby8H9}<@g1=1Y3D}O~F)j4I8p2PI/c#=-Ie*(^L>y/%3K
++:#58Ev##-q2Q3~9xdHhA6*(H6C^jaHh#5H9%(c1B-HK~9v48q0|0}%<&w1#1%$/^J}%(_;s/%3K+:>uSQ#4o(^tHac@(w#4&f5(Hn!g!{IoIg5^ni=Z>?4{7+dQHh4I7r#+H9!x,$[C4H!Q##IoH+#+H9!x9LA{
+A>CoF7XTIaBz%)};H+%2{|HNIg^zHK%(c1[^4I#6}g!K#4;-G9-K:Q9.Qy(L&G&I&M&L%F%CrD(B18$/^JRbSQ:sdlHa3?;s/%3K+:2>CoIE2O7!3t!xHK!K:sFHGRf?-9E.|$SQ#4o(6/Hac@(w#4&f!T!YHn!g
+!{IoIg(#:sFHSn9?YkOR=Z>?4{7+dQHh4I7r#+H9Zk[C4H!Q##IoH+#+H98D@tc3#DLlc1%)};H+%2{|HNIg^zHK%(c1[^4I#6}g!K#4Io2>GsDSs8-K:Q9.Qy(L/B&c0%(B^JRbSQ#4o(>FHac@,7|#%(Io#4HK
+%(ni=Z>?4{7+dQHh4I7r#+H9!x3{q2Q3~9xdHh#4&f>FHK!n3{!Q##IoH+#+H9!x9LA{SjCoF7.F&f>FHK!Q0k4H,)}g!K#4;-G9-K:Q9.Qy(L#l0#%v0%&C0(P@SQEwI~Sj:JSQ:sI~%)E{Gf.$&3Q32>H-!S!Z
+c@,7Ig(#C^IaHVHKH.Io*?{|M23?3t!xHK5JIo*?H-6/7!2!IfIgHL!ZIo*?GssoHK~9H-!Vni=Z>?4{7+dQHh4I7r#+H9Zk#-q2Hh#23{!Q##IoH+#+H98D>:!^%)CoE}HK5JHN2>%4e/I&Io2>HGHKE.0q4I#6
+}gPkHK!YIo#5;-s8-K:Q9.Qy(L%j%W3$&m%p^JRbSQ:sI~SjE{(l=Q55yZ3+_[7r2>GsI&c12FIg(#P.Hh2>H-,n9L2>H-EtSQ#4o(!TP.E{(lcA#4&f,dHn!g!{nizjIo=QColA4{7+H5#+H9!xHKC^A,@}H+#+
+H9!xHKC^A,9L=~!Yc3#D.L&f,dHKCU3{,)}g!K#4Io2>GsJ#q5S+:Q9.Qy(L#l/Fu##V%O^JRbSQ:sdlHaU5;!IgA<!ZIo2>H-B-HIT,893t!xHK%(Io!xHKC^!ZHK#:z7#4o(!T!^Hac@(w#4&fSoIk!g!{ni=Z
+>?4{7+dQHh4I7r#+H9Zk#-q2Q3~9xdIbi[#-!Q##IoH+#+H98D@tc3E~};}I9MHKA=9LSAIbCqHKc54I#6}g!K#4;-s8-K:Q9.Qy(L1-&h%W%[%y()$/^JRbSQ#4o(!U!^Han}(w#4&f!U!^c@,7HK@eHh#4HKEY
+3?3t!xHKB+A>T+SACo#6OR=Z>?4{7+dQHh4I7r#+H9Zk#-q2Q3~9xdHh(_Co~9GssO4H!Q##IoH+#+H98D@tc3#D,$(_H-CV4I#6}g!K#4;-G9-K:Q9.QyuL&HtO%w$$%p^JRbSQ#4C7!T!YHac@3X#D!K#4cpIk
+!g!{IoIgBz3?3t!xHKEWIo#8#D!K#4OQHKEY7!;s#-q2Q3~9xdHhHEHKIcHh#8#D!K#4^-(3Gv>DHK~9Gs=~8v#ASj=0*(H6A>Hh#4H9%(c1j47z=Z>?4{7+dQHh4I7r#+H9Zk[C4H!Q##IoH+#+H98D,$iNc1@e
+Co8jS(CoF7XTc1%)};}IcrML4I#6}g!K#4;-G9-K:Q9.Qy(L#j&T%E#~^J}%(_;s#-q2Hh~9xdIb!^c3E~HhIf|#H9M2z7#4o(5OHac@(w#4&f!TjaIk!g!{IoIg5^ni=Z>?4{7+dQHh4I7r#+H9E.%)CoF7!C[C
+4H!Q##IoH+#+H9E.%)CoE}9L=~!Yc3#DF~0q4I#6}g!K#4;-G9-K:Q9.Qy-P(D%y$$t>2,P@SQ:sdlHa3?;s/%3K+:!P2>H-[Jzp#>}wSQNH.E@eE{(lcAIgHLSjHhIE2O&fA>Hh+|CoIE2O&foxfnVK#7VWlA4{
+7+dQHh4I7r#+H9!xHKC^Da[C4H!Q##IoH+#+H9!xHKC^|$SP-NNH.E@e7zR;#1!V7s#>VK#7VNfnVKGMh7(3Gv!WVN:sFHSn@)-NC^Da4I#6}gGMIo2>Cob.:sFHGR3h-Nc2t4t.I6708q0|0}#k%zto-S#W$A$$
+%nrP-98q0|0}%<rM&iu~-N8q0|0}#n$B#N%Vu~}%(_0*QxOZ/Muy0~rM&iu~GR!E!Vz0s-(R%OrP-98q/%[PF)/@0*.e)8#17r0*.e3{AX=1);CoF7v$,ORGEvC7d_*(!K!F)^#141AfHaR;#1!VA6F)VQ#&#$!T
+VN)^#1VQ#&#$!UVNC^5;4I#6}gQer4S*-K:Q9.Qy(L#l171%(A^J}%(_#B.E#C29<!#CP.I/H3;+YQIE;+YQ!PIE;+YQ!PIE;++Gz7D33v>kSj7z.%-N;s3v>kSj7z.%-NE~(d3v>kSjE{}&80/a#4HD#-70Co}b
+)s9*=1EO1rxdCo_t=1EOBNnVCo[C.>1U!Q##&fSjCoF9+g{!kX9M|4YU7i#B.E#C29<!#CP.I/H3cE!K#B.Eq$q)H3cE!K#C.EH>QUH2H)da!K#B<!q$q)H3da!K#C<!H>oek8k8Vw+*,sA>Hh!ZHKA6*(H6^vH-
+IaE&!-#B.E#C29<!#CP.(d#B3hQ3+*P^#C3hQ3+*P^#BP.}-+^,$#CP.}-+^3?!rc!H)dMd_*(!K#B}I2G.E#C}I!C#CN^H-@u5;q(3?4I,R4I#6}g8[<V~r>A_S#1!U=h!K#B.E#C>r!|!K#B3hHh!r,$#C>r;y
+Da4I#6B.)^#1!U=h!K#B.E#C>r!|!K#B.E#C3hHh!r>E>i4I#6)1)^#1!U=h!K#B<!#C>r!|!K#B}I!C!r,$#C>r;yDa4I#6B.)^#1!U=h!K#B<!#C>r!|!K#B<!#C3hHh!r>E>i4I#6)1)^#1!U=h!K#B.E#C@A
+!|!K#B3hHh!r,$#C@A;yDa4I#6B.)^#1!U=h!K#B.E#C@A!|!K#B.E#C}I!C!r>E>i4I#6)1)^#1!U=h!K#B<!#C@A!|!K#B}I!C!r,$#C@A;yDa4I#6B.)^#1!U=h!K#B<!#C@A!|!K#B<!#C}I!C!r>E>i4I#6
+}r~G^M8>#/2T~Lw9urzZw4z_w8kXv$TlwaYU3Yf+89/a2k(dvavSwFv,wH)*vgwPvj}MvmOt;8/a2kwaYU3Yf+OT-^.$!K/a,k}+Q2YN}X}b)s}+4O{1pL{4S,H~-^&3I:G[0w1?+G|4YU3YpV70G[12,>0}/5$/
+rg&72+&^%I1%&50(|4YU3r/wVwzq=O}Tzu#<zw#9zyxaz|/a,k}+4^|17#8iixv#3Yf+?l,s=hg+7sobH>QUHN{bz)Fb+gpK{3y1R[#=+MI:G[0w1FwaYU3Yxev##=t5wApNCxUdjMBal>wpg)b[o[AcbGcwe&W*
+EW@}E.><bf^!pwsR4Zw}6@L0g;iE?SC1jMC4ZPaWlZwy9xnA:(@l(dg7E?lcU1;+P^,dnLCHnNx5O+^cLs?yX,ZPX.x<X1x:I+x>0HpN7!;+*dj?WgCh;}Cjj?CTCq<S;+t6)j;+#.C|[{a$W&Y[maX-@:cwe&pw
+sRS#2F5Pg3aZmSYka_>s9Lmh/Ui$gDWEan?!JbTTi_ZsSIaDayY:Z.gc[(JvY@ms-6+=8~m$KYAH,.4E8~EO}gQ_Jz;+t6)j;+#.YEl;U{m^Y[maX-@:cwe&pwsRS#2FH8g3aZmSYka_r/9Lmh/Ui$gD(zi*!Th}
+@c[nWLaEY;aGaEaKKc48;+t6)j;+#.MeTmbW3S|*NAr.5n5Pg3aZmSYka_LSbHJ%g<6748;+e[W};+#.Me5p7!;+wF-|TmbWr&^!pwBwmfbGhxb6lQ~AtT!K~Cu,,dSq0HpNMebN!K;+wF-|5p_Y|o)!!Q;+,s;+
+wf[;_j0.1P8A4^7N9w?R|o)!!Q;+wI8iixv#7iy{;$!Q;+wI=O+@R[{$Q-;+Hc{h-3S^;+P^>i3SjMC4ZPA;jPS^;+*djU,nIyj?X3sc_)jdhUr9t.nbAB;+P^>i3SjMC4ZPaWi@;+*djUS8*_j?CTCqB$hZk(B+
+5[k+|1)k|o)!!Q;+wI8id;;+Hc{h~Wk8s9d?4r[<|o)!H*9!c%GIOt;8!K{jxO+MG[0wqPR[y{;$LrSG8+&0.o!k2U4YzD=by{;$LrSGR)7iy{;$BB+/z1#6dn1PkI-KXl85dy{L0lz,9b+%S,SQz9vvz<SWz?*s
+).zB*s).+BS[8&zHzJp(l30wzOEvzQ4XzS~LzVQ-?lw:.>8>#/2T~LOt#=wTPj;8{L9b+%);-N#=4RI${L9b+%Tdk1{L0lz,9b+%/&vv-q4Rt4dy[23ty{;$BB+/_.+/SH[2-9zI{J&3gj+/:|8/QyzCSH[2-9zI
+!C;Bp(l30wzOEvzQ4XzS6s+/zVQ-z!/@#=8>#/2T6s+/wS(tGR{L9b+%gi:U#-(t!b(d{L9b+%);GsC_T+I(d;{Lze+/{Ry{;$BB+/j/{Vz!ur0H.HR[{Lk1vQ0H.HzZw4z_{L_>89/a2k(dzf:UvavSwFv,wH)*
+vgwPvj}MvmOt;8S_z,SH/a2kwW.HqPR[y{;$LrSG8+&0.o!k2U4YzD=by{;$LrSGR)7i0.1PkI-KXl859Y!v=W,b}i}b*-)a5d)^9T!v!Qpe}WxZx^xapm!vH*w:(#!v!Qq1BN5^d[c9H)REc&H)<_BE}Xv(%/wI
+#0zyd[5^)1LZ#.!j,$LZ#.!ro(nhz!AX=1/&va)V,}*cNE,~9T:u-|GH*~6[v50z/}3{AX=1,Azkz7Ew3@)^#.z0T+,$!F7z#>(t7zHa#>VQ#&k4j(nxf+SQEw3@)^#.!rh7,$!F2d@%Ha!C2d@%S5k4j(nxf+y{
+;$LrSGj)|G0w1PP@0.1P9+fb3F-7c!H)dM;+8XwY-1&fd_c:!K;+8XBU#BwY-1dk>C_Y|o)!!Q#2#:y!,Ry{;$!Q#2#:y!(_Hh+;-7HNy{;$!Q#2#:y!#6H9d_*(HDHm-NFqHHCo5=)1;+wF-|{v^!pwBw>cd_c:
+!Ky{;$!Q#2#:y!AzG!9Ldm;+wF-|IWn>U*|x~<tG.E>G}[(r}atStethtXYn|o)!!Q#2#:y!#6)1;+#.;dgcj/z,!Q:?Zg#C;d-gpNYEgcppcR4|+%H()*!H}?Gu+M~.%*$3s/Gu#.#7-X;+8XwY-10H93BU#BwY
+-1,$!K/a,k}+Q2YN}X}b)s}+4O{1pL{4VHro0.1PkI-Kq5fdbv1u269!{[kXv51uoMxWv#Vw#5_t#5@:h.89NHG[1u#2m#R[0S0}/B&I&h/TP@#5_t#5;sG[1u1q&f1WG[1u#2.O}OnhrodJ0lB>!_H(1d)*#(!K
+!H#.!N!L!_!K!H#.!N!L!G*n(_pe}WxZx^xapmcbSHq12^w^p:Em118#q$&fq1q.KpFz#+d[-l+@Fz[E+D&3I$-98+#5;sHF=P+oOH#5D3-9%4&3t49Y}i}b~a}i}b-*Co}b)snR@}#5_tT7I~#5[CI~T7<#dy!~
+-@9>+wEz:SFH<dnj(l!iZsiFF>u(3?!~!n#)!i!u~1!x+v?*t~tNu5tC!V~<u+u+tit=s(t?u$4y!V~<0qmKtI9LtKuMu#uOu$4y!V!KtH~D,d??tKu{u##Ms-&Mu655!V!K~Ctzu-ti(L#m&A%wu^u5tC!V~<?3
+tzJJtJ(Lufu#u4tb55!V~<5*u<x!!-!~-@3sH*/}uDt=2*%P2,uR#o3!%a#~0%%wuP-Xt=2*%P#LIo%k&h(>/9uR1-&h(>/9uR2)/F(O-Xt=%o#M(OIo17&z&C0(uR%<,Y$A$$t>2,uR#m&A%E#~-X(L#p(Ou##U
+-X(L#r3!rJ(8%P2,uRtM&I%G%ws4-X(L#n%r&k&x&C0(uR#o(9/F(O1!#VuU(S4%!~-@3sH46KuD(Lubu_,S1-%G1/-Xt=s(t?u_,SuMu#uOu_,Su{u##Ms-&M-X(L#m&A%wu^ud,Sufu#u4uV(L#m(H/F(Ou~yS
+(_*sz$[{bBC|(K!~-@3s;hmaX-@:bCIPmfbGwxj(nx@j:(@lFHC=dI~G=+#,*>;K81?#~N3RR;#1474%SQEwF@!YHa[Fn([}l?E#ws~twulZwyR)V3;??#?ln&D;x4lqX)lsT7>lx9lx@~|Dn_<Rb97A)^#1VQVW
+3S<v.%9-pp4%7i7AcRTmbW3Sl?E#ws~twubHJ<X-@:wxj(nxW{;??#W}7AcRx,:E~hIFA1nNm3x4A9X1x:ly<S7AcR~hAP2kWgbBl?E#ws~twulZwyR)V3;??#W}7A7zJhx-~hAP,kx1m3x4lqX)lsT7>lx9lx@~
+|Dn_<R487A7z?#9V%9fdbvOU8k3{kU2Cy.-m3{,)<s?#89!r112!G[2%<nv52:@#3?=CG[2AqoHh(y#:y.-mc@#6}DAv}JIC#22I2K}Onh?l9.(dG[2%/}3?4I#=Zk9D3tdLH5:gq)H3H+:g7!=Onh~w:gc%_tl5
+=Pv#{)7+dQHh-!Co4I#=-9Q3}:.>*(Zk#-q2Hh-!Co9D-9Hh}:4H/?8_fdbv)^cS#B<!#C<!#BDa#C|$BWh7[P=C7A)^#1VK#8(W|1.>**waYUVwc{[z:gc%#B<!#C@A:gc%#BDa#C|$p;(d%#Q3+6fr=0#14|X6
+{h-3X6U)iE4I#6X6^AK*}p+6ILw{^+pJ{2pM1xHh+a11WpX6|*n:C%cndQHhgb!~d[5^,$cnq2HhgbQU&f|$ILGoBtIE.ocSIE8~+K!UGHN3Hi!~;-1_#1H*6X|Dn_G[1~si2d4X1_#1H*6XFD}p+6fdyw/a6v9T
+)^cS.E!P#1@}!P**Q3!rB.)^cS.E#1@}**Hh!rB.)^cS!P#1@}!P**Q3!r>N=b)^cS#1@}**Hh!r~,Vw.x,EnJ=P*5!x(wG[2mr$n{#6R[8q0|0}uF(8%P2,k1Mb6vI4-K:Q9.Qy(L#o3!%a#~0%%wuP^JRb)^cS
+.E#1@}**Hh!rB.)^cS!P#1@}!P**Q3!r>N=b)^cS#1@}**Hh!r~,S+:Q9.Qyt=2*%P#LIo%k&h(>/9k1Mb6v+B=b.x,En%-3t.I6708q0|v:&h(>/9k1.x,En%-3t.I6708q0|0}2)/F(O^JGc*5!x(w!rt.I670
+8q0|0}2)/F(OIo17&z&C0(P@cR!x(w!rIo#13?>@8CP.(dcR!xIo!rHKCU8C*5!x_ScS.E!P#<I}!P>@B.)^cS8^I}>@B.)^cS!P#<I}!P>@>N=b)^cS#<I}>@~,S+:Q9.Qy-P(D%y$$t>2,p:*^2!!r_ScS!P#2
+UH#20HUHWp=b)^cS#2UH#20HWe=b)^cS#20HUH#2We=b)^cS!P#20HUH#2UHWpt.I6708q0|0}#m&A%E#~^J}%(_2!!rHKC^1H_ScS.E!P#20H>N=b)^cS#2e-We=b)^cS0OUH#2>N=b)^cS!P#2e-UHWpt.I670
+8q0|0}#p(Ou##U^J}%(_#2,1(w!rH2H)da^,!C!rHKI_)1)^cS!P#2UH#2UH-2Hhc{!PWp=b)^cS!P#2UH#2UH#2UH-2Hh#+)1)^cS#2UH#2wdQ3c{!PWp=b)^cS#2UH#20HUH-2Hh#+)1)^cS!P#20HUH-2Hhc{
+Wp=b)^cS!P#20HUH#2wdQ3#+)1)^cS#20HwdQ3c{Wp=b)^cS#20H0HwdQ3#+jQI6708q0|0}#r3!rJ(8%P2,p:*^#.<!/&**H-0k(#**Hh!rH9!Q!Z_ScS!P#.L##.L#,A!PTd=b)^cS#.L##.<!,A!PTd=b)^cS
+!P#.<!#.L#,zB.)^cS#.<!#.<!,zjQI6708q0|0}tM&I%G%ws4^JRbMb6vy~*^#.<!/&**H-0k(#**Hh!rH9!Q!Z_ScS!P#.L##.L#,A!PTd=b)^cS#.L##.<!,A!PTd=b)^cS!P#.<!#.L#,zB.)^cS#.<!#.<!
+,zjQI6708q0|0}#n%r&k&x&C0(p:RS(w!rHKCU_ScS.E!P#1UHc{!P**Q3#+B.)^cS.E!P#1,1UH**Q3#+)1)^cS.E#1UHc{**Hh#+B.)^cS.E#1,1kUIo#+)1)^cS!P#1@}!P**Q3c{!P#+B.)^cS!P#1@}!P**
+Q3c{#+)1)^cS#1@}**Hhc{!P#+B.)^cS#1@}**Hhc{#+jQI6708q0|1,(9/F(O1!#VuU(SP@)^cS.E!P!rTYHKE.0k!C!rHKHP=b)^cS!rHKE.0k!C!rHKBy!P!rHKE.0k!C!rHKHP=b)^cS!P!rHKE.0k!C!rHK
+T}UH!rIrSQEw=Dh7,$h4H*F)(t7z8,)^#1VQ#&IV{h~Wv4cR!xP@7AcRk4j(eTS,7AcR}+Txe(|,|.pD!-7AcR{v^!pwsR4ZcR!x|#8C*5!x|#~hIFA1nN|t3t4I#6!-7AcR|cx9lx7>!-7AcR|cFD}p+6ro7AcR
+k4j(o)v4.x,En%p:*^<aI/H3daF,,lGsCU~hAP,kk4j(eTS,7A7zz~g.r2C%#-|.pD!-7A7z6Xw{^+3~8sSZ!-7A7z6XU)iE4I#6!-7A7z6X^AK*}p+67A7z/|nN94|>|E(wG[1~si2d4X!-7A7z/|nNKZmbz%#6
+}Dt.nb7A7z6X{h3Et43?B?2P(d#,*>;K*sZA!~-@3s:f3JD>[Ryu89}_xr(py)x}9*4lH>y+y$Qxy&(py)y+y$P)y.y0{5~w,H/=*sz*}_yAy##<yD+pyGyI7),{3R!CyMurw?O!3?pe}WxZx^xapm89xn}WxZ!_
+zyxaE!4(xsc,q$&fDaq1BN5^7!0-(wyc+(+*yfyh-_!Kxn9I.!R&8C(p!Qt$>yGs-d8^kW+D0-SH0-PW7(6Pp:*^NH0-PW7(6PwEvU<|z,+%wJ~z)*m#@2Ot{n+M#7wEvUwHwJ~z)*vgwPJ*7=GRzCzB*s(r;^5G
+yNL_GM{I9V0[{R9VS1vo[;_j2O2=1*y~*^NHG[2.6*R[0S0}#m(H/F(Ou~waYUDX!n!y!|HDqaGjH9soHIFr5=kw700Sv:%G1/^JwaYU^cLs:~w.ya!~!n#)!i!u~1!x_U#78!-N!~!n#)!i!u~1!x_U(Lubu$9Y
+Xd!~-@3s!Q~IdXqtD>8Z81?#!~-@3s:f3JD>[R#,*>;K81?#!~-@3s:f3JD>,F<080;?OfSP_j!~-@3sH*9!c%GI7!E3{jxO+MG[1~rp*tk4j(7#2pGR0[9?dDzX3::tCX1*y~Em2kI/H3<_HDqaGjH9G[2NOJHI
+C*>u|G2m:S}%(_zYzJ+-urw?9X89/a2k(dzf:UvavSwFv,wH)*vgwPvj}Mvm7!,w(d/a2kGR/a,k7^}0F_.[}4[-}7(Z}9{1pL{4);-Nnh!~-@3sAP:S(d!~-@3sAP:SHhc&H)cEA6HkH:CDpE%5-@3sAP2oH9d_
+*(HDHm-NFqHHGs>CjQnb!~-@3sAP:S3Mv4{$Q-pdpfBFzyxapmz!~r>pq11rxdHhG[1~2ZpAq1BNnVHhG[1~2Zoe89#7w:4H,)R[G[1~2s&3GR,H/=*sxIk1#7w:%5!n#)!i!u~1!x_Ut=s(t?u$f+OU8ZB?c8wc
+%5-@3sAP2o35wc=P<td470!~-@3s:f3JD>-wGR!~-@3s:XVGSH!~-@3s:XVGk4C;GRj%y5p:*^E}(w!~-@3s:f3JD>,F}cosdg9!?Ad^H3da!Kj;;}j-x+chdmOU8Z!~-@3s:f3JD>6[.>E~ow,$!~-@3sAP2o3{
+,)<s?#t4{W=+!i!i!KZk#10l8Ev#|x!KZk#10l_>89Ilt:tK2z2|%W2~s-(A3&u6+w0r=C!i!i!KlUNT<mkf5D!i5J^%5N5P3{XY55!i5&Da5[q(0H,Hz$5D!i!KC(C(5q9L^h55!i6<6>Rt6Bi?mxn@M:mxn@SM
+4y!i5J62626=9L#1P.55!i!KDiDb9L#1Sj55!iDZS&mL9L#.Ei4y!i~<u+u+[^8t(w3vG0X3tZ/O&^,Y%^()u}-S/TVW3S524y!i5&5L5;Rs9LMX4y!iU%DaYlD_9L5S4y!i!K5qT8bsMLXF3t!i!imJDa60!^T9
+^h55!i!Ktf!Y5=5K5Qi?55!i5J|{!TmKu-[^M:55!i5&MT5Z,nt{[^SM4y!i5J!ZCV!TmK5^,d9L#1P.55!i5J5LK7T9#1Sj55!i!K!^DaUJ5Nf}8sEi4y!i5&Yl,e2Fu*9L8t(w3vG0X3tZ-P/7&z%E&d(>(8&z
+(1%Ju6+w0r=C!i!imJTiW.9LMX4y!i5J>C2F!VML5S4y!i5J5;Yl!Xb.XF3t!i!i?G?IlU>r^h55!i!K!W2F!X5L!Sg9i?55!i5Jtz,ctHu*9LM:55!i5&MQ5^C*t{[^SM4y!i5J!VDa6/Da,eb.#1P.55!i^,2E
+CD9L#1Sj55!i!K5q?I>CtYEzEi4y!i5&tz5^i[u*9L8t(w3vG0lyA=8at;(L#r$B#W&6,W/F/Qu6+w0r=C!i!i5J2F5;b.MX4y!i5&DaS$aa5S4y!iU%5;5[e/XF3t!i!i6<5;!V}R>r^h55!i!Kj_S&ag5Qi?55
+!i~<?3!VDaA#V}h~!i!i~<5*S%5^!TT9SM4y!i5&!S5LD_?jML#1P.55!i!K5;2FML#1Sj55!i5Jtz2E><9L#.Ei4y!i~<?360Af9=3t3vG0I+A>3at;(L/BrI/F-Ru6+w0r=C!i!iU%>CCVO><mkf5D!i!K[jDa
+1B9L5S4y!imJ.E?J5pT9XF3t!i!i!K![Da!W0kDbb.^h55!i5J!SCVRuTig9i?55!i~<?3mKJJ>rM:55!i~<5,e*T9SM4y!i5&r.!TRu5Nj_9L#1P.55!i5&>C>CT9#1Sj55!i5JC*6@Da}A8sEi4y!i~<5*A,u;
+e/8tC7InX3tZ(L#k&@%Gs5u6+w0r=C!i!imJ5N5;q(<mkf5D!i!K5;q!Rs9L5S4y!i5JDQDaC+0H,Hz$5D!i5&DaUJTiT9^h55!iU%CVj_5N!T6Bi?55!i!K~Ctz5^1B9LM:55!i5&MQ5^!W!^t{[^SM4y!i5JZZ
+!Z5L!^b.#1P.55!i^,b+W.9L#1Sj55!iDK|{!T5K9L#.Ei4y!i5J!ZCV5(Dau*9L8t(w3vG0I+Sj3at;(L#j%X&Vu6+w0r=C!i!i5JG,u;9LMX4y!iJD?jb-9L5S4y!i?GagD^T9XF3t!i!i!K!W2FYln59L^h55
+!i!KtHC*tX??i?55!i~<0qmKJJ>rM:55!i~<5*,nt{MLSM4y!i5J|{5KK7tY(xP.55!imJ5Zag9L#1Sj55!iMP>Cf}8sEi4y!i!K~Cu,u*9L8t(w3vG0I+ja3at;(L#irl171%,ZVW3S524y!iF,tzF-<mkf5D!i
+!K5LCVe/5S4y!i!K5;MQr/9LXF3t!i!i5JDa!W2FO>8b6755!i5&.EtHZF5{LsY;5D!i!K[ju,!TNLi!4y!i5&r.~D(fT9SM4y!i!K!^CVtxtX>r#1P.55!iV>OQkUSj55!iDKtHq(8sEi4y!imJthtX>r8tC7In
+I+!Y8at;uL&^(1%Mu6+w0r=C!i!i5&5L>CMLMX4y!iU%^%ag9L5S4y!i6<CV5[O>0H,Hz$5D!i!Ktf!VDalh8b6755!i5JX{!W5;Rs5Qi?55!i~<?3hF5<>rM:55!i~<5*S%5^lh_w[z!i!i5&r.6/>C1B9L#1P.
+55!iJD6@NTkUSj55!i5JtH!XCV~?EzEi4y!i~<?3|{,d>r8t(w3vG0X3tZ(L#i(+to,ZVW3S524y!i!K5;YlO><mkf5D!i5J.E?J?I>r5S4y!iJDD^DQT9XF3t!i!i5&2Fa^6@T9^h55!iU%5=tz>,K2+yLsY;5D
+!i5Jtzu-5*-d9LM:55!i5&g7u-5,e/SM4y!i5Jg7,c|{5OT9#1P.55!i!K5LCV5K9L#1Sj55!i5&ty.E>-8sEi4y!i5J|{~D^t[^8t(w3vG0X3tZt=%Wu}%y,Y%Ju6+w0r=C!i!iJD5paaMX4y!i5&DRnK3{XY55
+!i!KMT?jCD9LXF3t!i!imJ^%W.9L^h55!i!K!^5;5[1B5Qi?55!i~<0q60~?i!4y!i~<5*q!^t>rSM4y!i5&JKhFLC>r#1P.55!i!K5;DaG7(xSj55!i5JhFNBhG8sEi4y!i~<0qtf>-9=3t3vG0I+Sj3at;uL/6
+&hu[u6+w0r=C!i!i5J5=DR9LMX4y!i5&CVhFLS3{XY55!i!K!W2F?JtX9LXF3t!i!imJCV62T9^h55!i5J1C!ZCVO>5{LsY;5D!i~<5*A,bs>rM:55!i~<5,CV(g9LSM4y!i5&!SCV!Tn55N1B9L#1P.55!i5J.E
+5;ML#1Sj55!i5JhF5<CVNLEzEi4y!i~<5*q!5K>r8t(w3vG0I+Sj3a6C89IlT^+w,S2z2|%W2~s-(A3&-X/O&^,Y%^()u}-S3(uE/7&z%E&d(>(8&z(1%J-X(L#r$B#W&6,W/F/Q-X(L/BrI/F-R-X(L#k&@%Gs5
+-X(L#j%X&V-X(L#irl171%10,StMrIrl-X(L#i(+to10uE(Q(D%y,Y%J-XuL/6&hu[e2^L>y}5;Hcn0lXlYUIE=U7rx[!xdRGn(3qk-dA>GRIE=U7rx[CwQ3gb!m(3qk-dA>GRIE=U7rx[nfQ3gb!h(3qk-d~#SP
+_jIlIF2w2C8AWF6Z<ub?uD!E52-X!EMX-X!E5S-X!EXF8MuK[p-X!E^de2^L>yB?#:y!+:4kz7z9EvRKSW+;b?SZHak,O,,O!i6s8b,*#$#<_Q|4YU6Z#$#<8!k8t4^L>yB?-E?!6sOt}5;H6s8b,*_%H_waYU6Z
+_%&3v4}5;H6s8b,*H*%!{I9V6ZH*6&t4^L>y7t#-GHeg*.}g,-C:dW)*r;Il7Yixv#Vw6|(wHcsDOf}#-9w#vB)V}g,-C:dW)*r;Il7Yixv#v4#.7P75!E77}u7<qPpnc!#:y!+:HcU)5hOt8ifHIWn>U*o;7MPe
+7P75W#aRa%h-#.7P75W#l<g$h-#.7P75W#7T,~7YQ-891cc!-E?!GHgc4zOt1ck1Hcmw-l4Rv4#.7P75W#7T,~7YQ-zpw:c9-E?!GH8-Z=Zi~k4zzl4RI)8-Z=Zi~kC/+8{Rv4#.7P759aN%2d*)F0qP[Pw:c9#:
+y!+:HcUQMe!oU^w5@dOt#=4RI)Q@UYMe!oU^w5KP#=4Rt4t.I6Pe7P75vICHnN7YQ-89=OB?#:y!+:Hc1*Ot8ifH|t;Y{RSP-Nz9/a2kHWSW!K3Sjp!l.[,N4XAD.{3HYYTH=U?z|o)!!Q;++Mid:J7t#-!K/a<t
+z7z9+MHWSW!K/a,k*.yD+pyG+BRQ9M/a#-GHfcd?4r[<+bHp2CZ<l2T#8v2!IlVKT!({(W|17>|4YUVwL?3R0r=C?SC1MXTWM>3{XYT>Wu0H,Hz$?vXFZk^hJ(g=3TLt@f^dV}h~JfYKSMZ)SNK;+bHp*;B?c%i)
+7>RG-92>7oRM7rL?RQ)k7}VW+a7}8!7iG[2v9j=D)sGy!mD9|t3t1*DEm<EP5DDJ.EH)#1@ADUmF0qH)#1MLDUES<!H)#1>DAoEdDxIWn>U*H)#.Eiz7z9+MHWSWH[EiRQHiILU)iEH)#.Eif+IlHqZkIlIi,7BA
+8t9?3v11BAIn-NT,lfD9|t3t1*DEm<EP5DDJ.EH)^dmEEW11BA[pmE>dH)^d<$RGGYY2-}(_7oRM7rIlBBWuSZHa!C-}#6gc;!JnPpT!2xGR!Er_#o(K9?c_cUcWJn{RkL)G*YGn+p6b9!Yrq;LfGILT+5(wyc+(
++*+,+.+08)}TptD9Gn=LGpqaGjH9>-HIC*nh:u-|S_jF_vEz?#:u-|+;.k$y)6L_{Z8sGJk-o53Bo8ixv#7i:u-|cn+{{Z)1:u-|A6,-1i269!kW:u-|!K-&{Z)1:u-|AC.#{Z)1:u-|za;X{Z)1:u-|+;l}_vEz
+?#:u-|}<04).H*9!kW:u-|!K0P{Z)1:u-|!K!s37#-H*9!kW:u-|!Ky{;$H*9!c5GI)1:u-|!K!~-@3sH*9!c5GIOtG[-h7$8+:u-|!K!n(^7AW:yF9!kw70-u,E!n!rk1-u,E!n!ryA-|nPu&4~!n!y!|HDqaGj
+H9hJ(3GvFr0k<#=b-u,E!n!r9I2c2e?u-u,E!n!ryA-|2/t47!un#7,N+G*qS|)*$A#Z&T$-*n(_!k+),N+G*qS|)*;f*n3m|o)!,N+G5CS|)*$A1--S%WrkuZ*n(_!~-@3s,N+G)<)kR?(L#l171%(A*n(_?q1i
+#2,N+G8xR?(L#muG%r%K$#*n(_<N#?,!,N+G8xR?.r&Ts*&^uc*n(_3O40,N+G8xR?(L#u%X&K()(8%o#U*n(_z@,N+G5CS|)*rR(P%W(R*n(_.{#=,N+G*qS|?&!v!y*n(_.dr<y>+G8xR?9a6U*4r=*n3m+b({
+,N+G)<)kR?(L1-%G&|#U*n*9+@bP#1,N+G5CS|)*0~&V$B#N&Trk0(Du)!,N+G*qS|)*$A#juG%r%W&M0&)KVz:yun#7,NYQ(L#Z&T%E3$&h2,_Yl*))un#7,NYQ.r.u%?%A&7&e&^&5$--X!E,2-X_K_cr;*4r=
+c,rA$A#Z&T$-%R.u%?%AtO$.rP-9(L#Z&T$-%R01u#(=%Zv3M<l/))un#7,NYQ(L1-&w%s&U16%W(6rHs1rl&A$-%C/5%<#i(#/4%;!L-X!E,2|IwR?@R<fhun#7,NYQ(L#stN#V-X!EuvObff;buz/6u}10,S1-
+&hv<-X(L#s%Z%r#Je2c<N1+Aun#7,NYQ(L/5-Ss(%YuZ%{#U)KfU05!Kun#7,NYQ(L#m(H&7/F%OY+!u!|-X!E,2,a-Xg72E1C0q^J#:ZLc<_lF+un#7,NYQ(L/5&x%y&I(.2+%s-X!E{Y,i@S-X.E!^?3uK!H)K
+fU05!Kun#7,NYQ(L#p&PrXre()rN&5$%-X!Euv,r-X.Eg7<#?@N1+Aun#7,NYQ(L#l(Q(D(8%W&C0(_Yl*))un#7,NYQ(L#j%F&91%(A&7%}(%#Y%R&9&z&I%a&d#O-X!EzN,5#7)Kl/))un#7,NYQ(L#l(Q(D(8
+%W(1&9%Pto&$-X!E,2,<-|)Kl/))un#7,NYQ(L/5(R&^/E-V,Y&e&_/F(OY+!u!|-X!E{Y~U,a)KVz:yun#7,NYQ(L#r&7%k3$(R%O%Crku|&H%p)Kl/))un#7,NYQ(L#p(D(A&7%A&7&e$B#O&7%k3$(R%O%Crk
+u|&H%p-X!E0P-X_K_=kX%$k10P9p-_+%))_>r;*4r=c,rA$A#r&7%k3$(R%O%Crku|&H%p%R.u%?%AtO$.rP-9(L#r&7%k3$(R%O%Crku|&H%p%R01u#(=%Zvne[fU05!Kun#7,NYQ(L#m&^%w&#%n%Crku|&H%p
+-X!E0P27-XC^?3n0uK)KfU05!Kun#7,NYQ(L#l(Q%vt>(>(.2+%s&9#O&7%k3$(R-T10(K0P;o-X>C1C0q!E!H)Kl/))un#7,NYQ(L/5%a$$-T&IuZ&@rU$B#O&7%k3$(R-TrU(O/6u^#U-X!E0P0Y)KVz:yun#7
+,NYQ(L#r&7%k3$(R%O&9to(ArF!K&@,Y$A$$t>#L!L)Kl/))un#7,NYQ(L#p(D(A&7%A&7&e$B#O&7%k3$(R%O&9to(ArOuK0s0c,~-X_K_=kX%$k10P9p-_+%))_>r;*4r=c,rA$A#r&7%k3$(R%O&9to(ArF(D
+(;%?%AtO$.rP-9(L#r&7%k3$(R%O&9to(ArF&H01u#(=%Zvne[fU05!Kun#7,NYQ(L#m&^%w&#%n&9to(ArOuK0f27-XDahFBzuK)KfU05!Kun#7,NYQ(L#l(Q%vt>(>(.2+%s&9to(ArOuK0mAk-X>C1C0q!E!H
+)Kl/))un#7,NYQ(L/5%a$$-T&IuZ&@rU$B#O&7%k3$(R-TrU(@&r-X!E0s@2_Yl*))un#7,NYQ(L#j%F&9%N%W%ark-S&n&9&z&I%a&d#O-X!E0P0R)KVz:y!k+),NYQ!E;f)Kl/))!k+),NYQ.r.u%?%A&7&e;f
+-X!E-&-X_K_cr;*4r=c,rA;f%R.u%?%AtO$.rP-9!E;f%R01u#(=%Zv3M<gR>W|Y+),NYQ.r&T$$&9s(%Y&C0(uK-&2&;b(L/)(R%O-X(L#p(Ou##U-X(L#m&A%E#~-Xt=%o#M(O-X32.ue2c<R<fh!k+),NYQ!E
+!Vz0(Ds3-X!E3/v2<232.u-X!E!Vz0s-(R%O-X!E!Vz0/F(Ou##U-X(L#k%zto-S#W$A$$%n-X(L#u&y%krj0%%[ta(SuR#s&T(5%^$$%n-X(L#n$B#N%VrOuR/B&X&6uZe2_Yl*))!k+),NYQrB%D(,(6()&d%P
+tos518/S-X!E-&;d)KgR>W|Y+),NYQ.r&T$$rG$A()&h%Wu^#V%J-X!E/./0/M;b(L/5u|/8rOuR#r/7to3$-S#J-X(L/5&x-S&~/9uR/B(8%W$$1810,S#s&7$B#N%{#U-X32.ue2_Yl*))!k+),NYQ(L/5%a$$
+-T&IuZ&@rU($(>%y&|%P#U!L-X!E-&PYxx)KVz:y!k+),NYQ/O/Q&T0(_Yl*))!k+),NYQ/O/Q&T&8($%N&k$*-T(8%o#U!L-X!E-&0K-8)KgR>W|Y+),NYQ(L%jto%m#M$As4-X!E-&0K-8=);b(L/Btas*-X(L
+#s%Z%r#J-X(L/B&I(8%o#O/Fe2c<R<fh!k+),NYQ.r&T$$%C(5uU0(uK-&0K-82&;b/O/Q&7%J-X(L1-&w2+3&-Xuz0%()&5&$%Me2c<N1+A!k+),NYQ(L#n%r&k&x&C&8/F&91%&$%rs(&9#W&_&^%[,Z_Yl*))
+!k+),NYQ(L#n%r&k&x&C&8Hht>%P%Pu[%JuU$%-X!E/^/j)/_Yl*))!k+),NYQ(L/5(R&^/E-V,Y&e&H-T%Grks4-X!E/^/j/c/e#C)/c<_lF+!k+),NYQ(L#m(H&7/F%O&9%P%N&k,W%l-X!E,O/a/k/m/o-Xtz
+2E?3uK!H)KVz:y!k+),NYQ.r%^(8&~ta%c(Ds3)KgR>W|Y+),NYQ(L#s(DuZ-X!E-&1*-XuA6*uC_Yl*))!k+),NYQ(L#s(DuZ&=$/%CrD1/%^()$%-X!E-&0R-H)KfU05|Y+),NYQ(L#i&^/+cW$A()&d%Ptos5
+18/S-X!E-&:?Ni?j.E1B1C60^J#7)KVz:y<N#?,!,NYQ(L/5(8v<&A%[%y$&)Kl/))<N#?,!,NYQ(L#j&T%E#~-X!E-hvNp#Qd_cj!k1:u-|!K!n(^7A#,*>,*8dOH!n(^7Awk,OII:oM<l/))<N#?,!,NYQ(L#u
+&6%G$*$B#N-X!E-m;J.w)!0K;Jc<N1+A<N#?,!,NYQ(L#i&7%n&4%C(1%Y(8s()Kl/))<N#?,!,NYQ(L#q/F&6#~0%$*%M-X!E-{-}.!*3-Xk+0-H$#/*2&-IIM<l/))<N#?,!,NYQ(Lu!s/%r#M%Ys5rOuK.).+
+-Xk+0-H$#/*2&-IIM<l/))<N#?,!,NYQ(L/B&I&MY+!u!|%C(1%Y(8%o#U-X!E.0-X_K_c|1%$k1}iv(%/wI#0zyh:.!U:|!k8:pfU05=h-^#?,!,NYQ;[!u!|%C(1%Y(8%o#U-X!E.4(^-X62hF<#?@N1+A3O40
+,NYQ(L#u%X&K()(8%o#U)KgR>W}<04).,NYQ(L#l(9-TuZ-X!E0*05|V0.D!04).6Y<Y4-04).?wm&|V0.c<_lF+3O40,NYQrB(*to&$-T&5&I(.2+%s-X!E0*0507-XhFNB.E0q!E!H-Xs>3O40@gCJ=O3O40@g
+CJ2pT+3?zS(w3O40@gCJqQiK%/iMk*i8+DzSPp3O40@gCJ2pGR3O40LrSG8+3O40?wm&}<04).LrR_fchce[hg3O40,NYQ.r%V(*#M&e&H(%#[%C%[rU%Y(8%Pu[-Xs>3O40IF9q4ZOtgR>WQD0*05|VG~8+gR>W
+QD0*05|V?F32.uv34rr;*4r=)*$A%j&z&I(8#S%Z&T$%%R&A%wtqs($B#S%Z1&B7)1YE_}3O40,NYQ(L#m%X%y(52+&7%AtP&t&!%J(O0&%b&9&z&IuZs,3$1:%Ds,$$.t%E(1s,rk1:s-t_rFrX%w&v2+&7!Q#%
+#80~&53$(8#J3!%Us5%l&Z(.%A%ss,%[%G&V,$$B#N&TtmuZtp23&9%N#M%Ys5s,$0/Fu##V-T&d%o#M%?$B#S&T%c/7%NtorN(R!Q#%#8tL&^(1%M&4%C#r/6%a()uP!Cr_rb0&%^%G1/%k%a(Ps($B#N&7%AtP
+$%&91%&IuZ/*v;rX%m1%&5$)cW0~(.&R(1%R&}%F%R&A%wtqs($B#S&^uZrV&z&I(8#S%Z&T$%&?(P%o#U%C(1%l%C#~.t,W!Q-Xj_c<N1+Ay{;$,NYQ(L1--S%WrkuZ!PrXs2%D)Kl/))y{;$,NYQ.r.u%?%A&7
+&e&:(&rkuZ-X!E0w-X_K_cr;*4r=c,rA$A1--S%WrkuZ%R.u%?%AtO$.rP-9(L1--S%WrkuZ%R01u#(=%Zv3M<gR>W!Ky{;$,NYQ.r&T$$&9#W$B#N$B#N%X%mto10(K0z/}9g-P1!#V18$/-X(L&G&I&M&L%F%C
+rD(B18$/-X(L/B&c0%(B-X(L#l0#%v0%&C0(uR%j%W3$&m%p-X(L#l/Fu##V%O-X(L1-&h%W%[%y()$//UuL&HtO%w$$%p-X(L#j&T%E#~-X-P(D%y$$t>2,uR#k%zto-S#W$A$$%n-X-P&6uZ&@10/A$B#N%VrO
+uR#l171%(A/UALgR>W!Ky{;$,NYQ(L#s(DuZ&9#W$B#N$B#N%X%mto10(K1)6*;b(L1-%G1/-Xt=s(t?u_/(tNud,Su{u##Ms-&M-X(L#m&A%wu^ud,SuMu#uOu_,StMu|%k&M-X(L#m(H/F(Ou~ALl/))y{;$,N
+YQ(L/5s5tN%~18(A(!!K~.s,()&d%Ptos518/S!L-X!E0w1P)KVz:yy{;$,NYQ32s-&h#J&91%(A&7)KgR>W!Ky{;$,NYQ-P&Ark$/%C#~t>rmuK12YZ3S-P16%W&d1%221;,S/5$/rg&72+&^%I1%&50(AofU05
+!Ky{;$,NYQ(L&G%y(B&L2+%s-X!E0w1?+G-X62-d>C.E^J#7)KfU05!Ky{;$,NYQ(L#m(H&7/F%OrV#L16%W&d1%(ArOuK0w,a-X60.h>C.E^J#:ZL_Yl*))y{;$,NYQ(L#j%F%R.t3$&ds(&e-T&I%a&d#O-X!E
+0w0R)KVz:yy{;$,NYQ(L#juG%r%W&M&@rU$B#W$B#N$B#N%X%mto,Zc<_lF+y{;$,NYQ(L#m&^%w&#%n-X!E0z1U-X60K8D^uK!H)KfU05!Ky{;$,NYQ(L/B&v(Q2+%s-X!E0z.e.@-X601H.E0q!E!H)KYE_}y{
+;$,NYQ(L#z$B#N$B#N%X%m#L%C&j/F%k&m(%#Y%R/*%{#M(O%C3$(5s1&^$*$B&~%G%c%l16%W&d1%22#M&91%(A&7s,rU&Rs5tN(C%U(R&^/E-V,Ytn%C(8#[&?&|#Ys,%w()&h%Wu^#V%F&4&9s((%%Pu[%JuU
+$%cW$A#stN(C%[$%16%o-Vrk%yuZrc%Gre$$/F&?(P%W(R&^%E$)s,%U(RrF&PrXre%I#Y(,&h%Pto-S2|%N%P#Y&9%o%K()%a$-&9#K16%W&d1%(A&A$-!Q-X!Z[J!~-@3s:XVG(w!~-@3s,N+G?@N1+A!~-@3s
+,NYQ(L#l171%(A&=$/&91%&$%r%o/G_Yl*))!~-@3s,NYQ.r.u%?%A&7&e&P171%(A-X!E1~-X_K_cr;*4r=c,rA0!%W&d1%(A%R.u%?%AtO$.rP-9(L#l171%(A%R01u#(=%Zv3M<gR>W!K!~-@3s,NYQ.r&T$$
+16%W&d1%(ArOuK2%/}-X!~-@3sH*/}SZ?@R<fh!~-@3s,NYQ(L#s(DuZ-X!E2.6*-X!~-@3sH46KSZ?@N1+A!~-@3s,NYQ(L#lrX()$0(Q-T%E&h%N#J)KE{4QXYZCWb!~-@3s,NYQ!T!T[Jzp<v[{bB|*n:C%CV
+n8^!W*YjX{L#,dbkiE?SC1Ve.kyD+pyG-3<S5SbN7sAXTj!~-@3s!Q~IdXqtD>8Z#:YB4rVz:y!~-@3s,NYQ(L#m((&^%mu[%n)KfU05!K!~-@3s,NYQ(L#m&^%w&#%n-X!E2%1U-XDaC(<!^J#:ZLc<_lF+!~-@
+3s,NYQ(L1-&w$B#S/QrOuK2:@#-X<!UG(K9MZLc<_lF+!~-@3s,NYQuL&^%w&h#J%R&91%&$%r&a-X!E2A2C-X.Eg7@~^J#:ZLc<_lF+!~-@3s,NYQ(L#jrK(Q%vt>(>(.2+%s-X!E2H#6}D-XtzNB.E0q!E!H)K
+fU05!K!~-@3s,NYQ00s($B#S%Z&T$%-X!E2NBf@}C*>C.E!E$3#}!R%O)KfU05!K!~-@3s,NYQ(L/B&#$B#S%Z&T$%&=$/%5-X!E1~2ZL8UH6/>C62uK9MZLc<_lF+!~-@3s,NYQ(L/B&#$B#S%Z&T$%&=$/!C#!
+-X!E1~2Z#!-Xf|>C62uK9MZL_Yl*))!~-@3s,NYQ(L2z2|%W%[-S#Ys03$&I%a(IrOuK1~si2d4X)Kl/))!~-@3s,NYQ(L1-&h(>(1%R&91%&$%r&a-X!E2m,k)Kl/))!~-@3s,NYQ(L#muG$B&~&d%o%KuZ(%#Y
+16%W(6rh&TrerN&50(uK2m2o)Kl/))!~-@3s,NYQt=s(t?%XuZ%C%[rU&T(P%W(R%F-X!E1~2sNi)1YE_}!~-@3s,NYQ/O%?3#.t$%&?%w&#%^rN/S%R&T()t@&9%Ps(%v/F%R16&k()$0(Q-T%E&h%N&acW$A#j
+uG%r%W&M0&16%W&d1%(ArF-T&h#O0%%I#Y%?%r%P#Y%R%CrD%I#N&T(P#Mt>1%/S$B#O!Q-X!WTjVz:y?q1i#2,NYQ(L#muG%r%Kre(1&9#W&_&^%[,Z_Yl*))?q1i#2,NYQ.r.u%?%A&7&et>%P%N%K$#-X!E1u
+#2-X_K_cr;*4r=c,rA$A#muG%r%K$#%R.u%?%AtO$.rP-9(L#muG%r%K$#%R01u#(=%Zv3M<gR>W}<,-1i#2,NYQ(L&q&h%W1/%M-X!E1u#2m#;b!E1z1|uK!X!_!W-X!E!V!_(huK!T!Y!_-c-X(L/B&I&h/TAo
+Vz:y?q1i#2,NYQ(L/B&I&M&9s(2+%J(O(#$B#Nv;%Y-S#L!C$3#xuS(D&h#Y$3$,!L)KfU05}<,-1i#2,NYQ(L/Bre-Sto&5$%&=$/%R%V%k&5(1&60(uK1u#2.B-Xg7NBK9!E!H)KfU05}<,-1i#2,NYQ(L/Bre
+-Sto&5$%&=$/%Crk&h%W/D&A%Ito%y(5-X!E1u1q-Xg7NBK9!E!H)KYE_}?q1i#2,NYQ!E1z@e(!!X!_A>(%(>&m(?%@%N%P#Y%C%ytqu[%Y-Sto&d(>(8&z&C(6%U%a$$&9to&I&M&9#W&_&^$.cW&Fu##Y&9&z
+&I%a%Grk$/&9s(2+%J(OrF&H.t3$(8%W&8$B#Nv;%Y-S#L!C$3#xuS(D&h#Y$3$,&4rg(Drj&^%c&Rtms*rE$)&(%A1.rc&$1#&~$%rGr[%A%Z&T$%,$(@%D&9&~&d&a%R.trk%>%K$$(+#L&?(P%W(R&7cW0!%W
+&5tq%q(>(.Db!Xr_#_>tGv&R$/%R%V%k&5(1&6$)!Q-Xa^c<N1+Az@,NYQ(L/B&v(Q2+%s)Kl/))z@,NYQ(L/B&I&h#Y&9&z&v(Q2+%s-X!E.?wR?@_lF+z@,NYQ(L/B&v(Q2+%s%C3$%Grk10(K.?.A(^-X!TCV
+1H>Cc<N1+Az@,NYQ(L#l%{-Vre(R)Kl/))z@,NYQ(L/B&I&M16%o-Vre(R-X!E.MBac<_lF+z@,NYQ(LuT&xrU&P%{-Vre/9uK.M#:.B-X601B.EH;l/))z@,NYQ(L21/8&A%[(8(>uP16%o-Vre(R-X!E.S.U.I
+)KVz:yz@,NYQ(L/5&w2{%M)Kl/))z@,NYQ(L&q&x&s-X!El1-X_K_=R[j#d;l1oX4Z8dOHl1/!7uII4rl1,N4X#6{qiqr;*4r=c,rA$A&q&x&s%R.u%?%AtO$.rP-9(L&q&x&s%R01u#(=%Zvne[fU05z?*s/=fu
+(L/B&v(Q2+%s&=&w2{&:-X!El11Y.@-Xtzu-.E0qc_p#Qd_c1Y.@!r4bgc,7cQ*5cTk9YE_}z@,NYQ(L&q&x&s&(s&(((*#Y(,&C(.&R(1&!&}(!!KrSrM-T$/(3(D(;%?%A&^uZ&4%R01u#(=&^uZ&=&w2{%McW
+$A#jrF(@&6(8#N&A%[$%!Cr_rb(7rX(;%?%ArltN(Ctq%q&~$%&4rct_&73!&#(*#X%C%[rU$B#W&_&^%[$%(#$A#^$A#^$A#b$A#m$A#r&f$A#^$A#jrR#d&f/8v;/7%P&n+g%C#jrF/4%;&(.dZh!Cr_rb(D&I
+(8%o#OUc,-(_&T(5!C!w!Cr_rb(Dta$(!Q-X!ZgQN1+A.{#=,NYQ;[!v)P3#/F2+)KgR>W!K.{#=,NYQ(L#m%Xs2%D-X!E3Gm#;b32.u-X(L#l(Q2+&J-X(LuT(BtPuQuE(?%ou[$B&~/9<S2CZ<#C.{SZ!-YE_}
+.{#=,NYQ(L#l(Q2+&J&Z3$%Gs/(@%^%G$*,$$B#W$B#N$B#N%X%mu[&H&4%R/6$.%R&A$$%p!Q#%#8uS&T(BtP&tIo&P(Q2+.t$%rc-Sto(8%W&5%yucs,3$%Gs/%AuG%k&d#Ps,1:%A%X%c(!&72+/7(>tarD%S
+-T&IuZ%x!Q#%#80~-S%ou[$B&~(1&(Hhs-%Gs/(@%z%P%N#M%n&4rg%X(1&6%G$*,$-T%y%E%a$%%Cta%wrD$%%C(1%A&y%k&I$/&4&!.t,W!Q-X!ZgQN1+A.{#=,NYQ(L#n%A2{%r(>&5(S_Yl*)).{#=,NYQ(L
+/5(R&^/E-V,Y&e!l!v!y-X!E.x.z.k*n*9+@bP=C3S-r4Yn_nz#+7aC|n{(_<d%9Vz:y.dr<y>YQ(L/5rZ(8#J)KE{XcfsWb.dr<y>YQ6/[Jz!,Hz$[{bB|*n:r-Da,dbf^!pwsR4Z!ZDa!ZUKlPU*ls@@cpb9W}
+4I5dtXw9,H;N<_m3EDm7lqX)1*DEm<9*!s!{!y8J#)!m!x!k!k!t~@u&mIr.tfD_;-,$GoBt5)<S4I5dmZaRm^M4maX-@:bCIPmfbGe0.q$S#f#wmlY{gDJ[mqi*?Ji,iEls@@cp484I5d7!*4#>OFXnU{m^Y[ma
+X-@:cwe&pwsR4Z!^CV5Kbf^!W*Yj-ca_JJ9Lmh$A.s-V3$(8%W&8%r&k(S-fi$gDWEan?!Jbmvi_ZsSIaDayY:Z.gc[(JvY@Ji-6+=8~m$KYAH,.4E8~EO}gQ_a~dJ,P-^n&aQU{m^Y[maX-@:cwe&pwsR4Z!^CV
+hng3aZmSL$a_,cT9mh/4&6%G(8#J6)${$}9n-fi$gD(zi*aqi_ZsKQZqayY:Z.gc[(JvY@Ji-6+=8~m$KYAH,.4E8~EO}gQ_a~?lDo[3[{a$W&Y[maX-@:cwe&pwsR4Z!^CV!Xn8^!W*Yj-ca_,cT9mh/Ui$gD(z
+a=TQY3aph}@cU*!s!{!y8J#)!m!x!k!k!tauY:Z.gc[(JvY@gM^:TlWgbB|*NAX{.E!^n8^!W*Yjb3D^bkiE^g67b9W}b<E[b>-|TmbWr&^!pwBw>c>CbkiE!s!{!y8J#)!m!x!k!k}~U.,ObN+;cgE[3?[2b#YW
+m[W&Y[maX-@:cwe&pwsRS#Da-ce+sQSgC%C(,d9Lmh!S!_-d/Ui$gD(zi*tzM8MWZqayY:Z.gc[(JvY@gMOT+/l;U{m^Y[maX-@:cwe&W*YjD_Ad!Se+sQSgC%C(,d9Lmh!S!_-d/Ui$gD(zi*tzM8MWZqayY:Z.
+gc[(Jvkla~?l)n#52sn&aQo-hrM4maX-@:cwe&W*MP@}j_bf^!W*Yjb3W.9Lmhe2@p[P)n#5eSdD~G^M)n#54(eY89^Q(w!y+LKZ+{#/3I*)+aR[^QSH^QI97K}%(_}EH)dMekdYq%CldddfdWdY!~d[c9H)dadc
+olotdidk>Cc<+LKZ+{dXa+%2Co^Qk:)^#/#52s6XkOe7o/kBi7q<R[qAenqCQ%qJf=VcqIp7oHqLo?qNR#Q-)^#/#5eS0[=b)^#/#54(eYt4ozkMo,ecP[p#e;Ot)^#/#5q?:Up)qJp5Q%qJVap0:~oFp7oHqLo?
+qNp9kp)n#54(f*t4ozkMo,q:p#e;Qfp3enqCQ%qJf=VcqIp7oHqLo?qNR#d;)^#/#5eSw-d?M<z!#>b@[TbW3Sl?E#ws~tg2cwe&W*EWe-5N!Tx.g3d/sR4Zw}b-wvmbX3@pX#vINd-^U{V0U}D@y!#6t$N+L;b?
+t$=N!Q,(.!#DKE(^~4+%0DKE(^aJZ.!Q,(.!#DKE(^aJ6jz(L_-f>n,PO)#6aJZ.BG=YO)#6aJ6jz(L_NMV!R(NINA,dE(NqT^TJV-:CV/V105Jz+>#6xDyw_@9+Yx6[9/05ho[{^>l=?*w{^+6[ybbkiE^g2U^H
+#>Yxi$gDWEL@msJbaA@ci-YxTZV)Nt(dm,yPE?+>#6bNiAyb&f|$[7dy.x_xo$byZg[C=DYx*;2D_/Kk)*$S#Q#N-Xg7bGd<Kk)*#F$S#d#J-Xg75^9L_/Kk)*$S#c$&-XS%^z[DKk)*$S#c$&#F-Xg7F-[DKk)*
+$S#P.v?I.EH;Zg#CIWn>U*!s!{!y8J#)!m!x!k!k!t=bZg#CgcE8nQ~+>[=bZg#CgcJbj46x3Jf=gw_G#5e9k+89=O!s37#-6k5u!oRAF{d*k,=Dk1!s37#-:XARcFk8:p#85uf=gw_G#5e9k+89=O!s37#-6k5u
+!oRA5JB.;3k1!s37#-:XARcFk8:pZg#Cf=gw_G#5e9!s37#-@gl*VH.x_xf=gw_G#5e9s>!s37#-H*;+2UOF;8!s37#-H*;+2U/%1_;+ILmwGS37#-H*;+2U/2GR!s!{!y8J#)!m!x!k!k}~_$Jgik*;H>|Tk@#5
+e9s>~NV*+w!CtK.s33%=u60}.s&z$%-XtK.s&z$%u60}#k$A()t_-XtK#k$A()t_u60}.s33%=e2Q737#-IFDx,5#>m#h::C#$!s37#-IFDx,5#>m#(W*;H>W5!s37#-IFDx,5#>m#uy$A#k$A()t_^JGR!E$S#P
+$,!TrP-9!E$S#P.vYSH>mwGS37#-IFDx,5#>m#uy$A.s33%=^J^b_%^eGS!{!y8J#)!m!x!k!k!tik!s37#-W9Ew@v*4#>OF*4#>x+/i*4?m/i*4Ar7(X^/@7(X^6w*s80*s.3b?+}cg[23t[2Zk#.+/(w#.+/3{
+,H;N<_ze,H;N<_4%7ifU05}<6U*4r=,NYQuz(Q%Y&v2+%s-X!E364L#-39YZ>CJKuK!H-X_K_c!y+LBGdV9j%$&f.Qk9Vz:y.dr<y>YQ(L/)&53$(5/7to(:rOOR[F_}.dr<y>hmTj~w#7{E#>Yx#B~F)jbUaQo-
+hrMFg.Yi#B293hQy3hGR!Y9?U&D^bf^!W*EWUH!^MRNLhxb6Lqg=ms,7Yxi$gDWEan?!Z$i,iEJfi.@pnF^7Tj[7dy#,/cAD#,l9,b#7{E00&z$%&9%N&k&C0(>Z#7{E!E$S#f#r%C(N%w#~0%%[(.%F-Xd3~w7p
++29TSQz9.JHWSW!K3S3S#,/cAD00&z$%e2<2#,l9byrB&[#~0%%[(.%Fe2EbE{yT=O!s37#-4|yBz$:t#$!U(WRw#$!TVN>iXVlPU*4GGR!s!{!y8J#)!m!x!k!k}~_$g=M8KP4G|wmR_!r4_$M:SOd?4r#,/c#6
+f=gw_G#5e9k+!s37#-4|yBz$,S.s&z$%!E=b7p+2+B=b!s37#-IF#/#,*>;K_R#,l9#@f=gw_G#5e9k+!s37#-4|yBz$,S(N%w#~0%%[(.%F!E=b7p+2+B=b!s37#-IF#/#,*>;K_R7p+2I44rE{(lZH!CZ9.dr<
+y>YQ(L/5%a&d&z$+&=$/%C%[s)(Ds5&7%?(4(!&7-T%Utms6to22#X)K0AzB6y=Y#CecP[0C9{(^T05u)0e9k+!s37#-H*[-P?(d0Agc=b!s37#-IF#/#,*>;K_RVw!sUzTmbWr&^!W*>qe-MrUoM}UmKYUiM}Uq
+hxa(mbX34-6U*4r=,N+GnLNd-^U{V0U}AZV:=C=qV%E(NqT^TJV-:CV/V1m-CsUzc<N1+A.dr<y>YQ(L&G%a3$%yri&e%4&T%w&#/C&e%r&k(S7!#/C|!CZ9.dr<y>YQ(L#j&^%w,YuU$%*n(_#//W*4?m!CZ9.d
+r<y>YQrB-T%Utms6to22#V*n(_B<xB7%eX.dr<y>YQ!E!oz0!K=K4b,~(3&T(5&9%P%P-V&x(1%C%[rU!Q.I1|HQ_j!s37#-IF#/#,*>;KRGHS3{z<SW!K!sUz*.wH+1+BS[d57P75[|7Yd;#-B0z,/aB4{Rpd~R
+(d!s37#-!Q{Ak5qd70!F{APpw_Q-frZCWb!sUzb-fw3}XgAX!s37#-4|yBz$0}.s&z$%^JGR(L#orXrD%S%^uZrP-9.r&?%w#~0%%[(.%D&=(RrF&P/F2+1&b2?KgcZp#,|h85dy!x!k{NiFF>~;~Dtf!T5>z7m,
+yPHVz<SWc,-^S[89.$!s37#-@g-7+(S53?-^+.3t!s37#-4dh0RW[F_}!sUz5pCEILTZV)Nt(dm,w@890;l;o-hrM4maX-@:bCIPmfbGe0Z_^Ke4|Tk@#5e9k+!s37#-:XAROsk9XnU{m^Y[maX-@:cwe&pwsR4Z
+E/bf^!pwsR4ZYl!Wg9W5-^+.-9ej!s37#-:X*sq?:U!E$S#f#wrP-9!E$S#j#g$S#j#gvO-97W1a*58A:C9Li$gDWEan?!Z$Z|i_ZsHV#=+.-9GR!s!{!y8J#)!m!x!k!k}~_$TXgMXnU{m^Y[maX-@:cwe&pwsR
+4ZS%!C[^e,UEhFdle/Y)6Y9?c_-fi$gDWEan?!JbaA@cU*-^+.-9GR!s!{!y8J#)!m!x!k!k}~_$gLaEY;aGaEaKJyJi-6+=8~m$KYAH,.4E8~EO}gQ_a~XnU{m^Y[maX-@:cwe&pwsR4ZS%5^G7bCg/UH,dT7,c
+a6lXHEH*9?c_ysZ_rA%^uZ&42+/7(>ta(1!C$3s/rP-9c_cUcWHE?wSH6X%2zI^I(3GR6X%2c^r_#a)0-fi$gD(zi*!Th}@c[nTXms[(awKYaEaKJyJi-6+=8~m$KYAH,.4E8~EO}gQ_a~89+bzdhpo-hrbXwpg)
+b[o[[[NUg.Yig0[eX|sQSgL-5;lhE5maX-@:e0,,4|rA$S#f#rrP-9!E$S#f#nmlY{gDWEan?!Jb/rmsC/6X70GR!x!kz0_$TXgM+byl|Tk@#5e9s>6X<vo48*4|Q737#-H*M&9T!s37#-IF#/#,*>;KB77!@Wn&
+aQo-hrbXwpg)b[o[[[NUg.YiL#S%BzlJ^!pwsR4ZMQ5^G/n=a(mbW4lX!E$S#i#XmlY{gDWEan?!Jbmvi_ZsKQKSgM@W6X|Tk@#5e9s>!s37#-!Q@WOch0HV+r;dgc-%/W*4-_gc-%!yxBgc,76Y9?c_11?w9?c_
+11H*9?c_9hr<>}(L#m((&^%mto&d%o#M%?&(^JcV(#6X7@-9c_;-AMig.o#0FLg|*_6U*4r=,N+G+-+KMm#=U={)b*.dr<y>+GolotUl1U{-s9hct5GyT2}<6U*4r=,NYQ(L&G%a3$%yri&e&H&9&z&c-T(R-Xs>
+89=O#/;dgc!_#1SM)*#(!H#=!N-Xc_!L!_#1SM)*!H#=!N!G-Xc_Ot9wZ_k1r;*4r=)*$A#^(D%G()(6%[s)(Ds5&T$%&9%N&k/98Ev#s:=V=f4g!s37#-@g-7+(<2BW,1(w#//W*4-_gc-q(wB<xBgc.3~WAL!s
+37#-H*M&I4;dgc-%/W*4-_gc-%!yxBgce1uK-Xc_Q737#-IFJx0-#29Tr;*4r=)*$A#orX$+rg&A3$%y&IrZ$.&(^JcV=DB7)1hg.dr<y>YQ(L/B&h#O0%s6&n&?%w&#%^rN/S%R.t#~0%%[(.(O&>!K$S#i#X!L
+-Xs>89.$!s37#-!Q@WOcg~GR!s37#-@g-7+(#$!s37#-!Q@WOcVMkX-lk1r;*4r=)*uSr[%A&^&xrUr[s1%Y&8$S#i#X&9#M&9%N&k/98Ev#Vw=O#/;dgc!_#1SM)*#(!H#=!N-Xc_!L!_#1SM)*!H#=!N!G-Xc_
+Ot9wZ_k1r;*4r=)*$A#^(D%G()(6%[s)(Ds5&T$%&9%N&k/98Ev#S26Y11?w11H*3X-%/W*4-_gc-%!yxBgcQ737#-H*M&9T!s37#-IFJx0-#29Tr;*4r=)*rR%w&#%^rN/S&9&z&h#O0%%[&$%pvne[hg.dr<y>
+YQ(L#p$As4&6&m%s%R.t#~0%%[uP(#$S#i#X!L-Xs>89EwGS37#-!Q@WOcRZ|1(#*?GR!s37#-@g-7+(S5{Ir;*4r=)*uSr[%A&^&xrUr[s1%Y&8$S#i#X&9#M&9%N&k/98Ev#s:=V*;,i3K!K!s37#-@g-7+(RC
+Ot!s37#-4dh0RWP@!s37#-4dh0n{#6=b!s37#-:X*seS..=b!s37#-@gCJ=O!s37#-@gCJ2pT+:K:vk+!y+L!_/!7uIIR,-K+D!s37#-4dg~GR!s37#-4dg~I:*?j$37#-4dh0GS37#-4dg~Q3T,7i!s37#-!Q@W
+Och0n{#6+r;dgc-%/W*4-_gc-%!yxBgce1uK-Xc_Q737#-H*M&9T!s37#-IFJx0-#29Tr;*4r=)*$A#orX$+&9#M$As4u#uOvne[YE_}.dr<y>YQrB2+/7(>ta$+&9%N&k(1&(!oz0(?#M$A()tl&)[y(Y-!&T(5
+16%o%K1/%Q(%%P-V&x(1%C%[rU!Q.I@e($&z(1%A&T,Ytn(%#Y&4%C%m#W$B&~&d%o#Mtn(%#Ys,%I#Ms1-Uyb.!9!bP/2(!;$[2-_M|}06~cW$3#xEJ#>#=$3$,&9#Ms1%F%R&?%w#~0%%[(.%D&9#Krg&H/F%D
+%Q!o!j&Z(8&z(5s0()t_rG&^&j%|#Ls,$0(Q3#/Ftn(%#Y&9&zrZ$$/F%?$B#S&T$*cW$A#irdrf(D&c-T-S&n%C%[(8&zrD(B&U&42+/7(>tarD%S%A%Vs.!C$3#x!a$3$,cW&F%{#M(O&T$%&9%N&k&C$)&(*k
++L-/2d-!A6Ai+b2d#BH4#7+g-X!^[J!s37#-IFJx0-#29TVz:yIl,NYQ(L1-%G1/rc&$%?)KSQz9T!2xHWSW!KIlN~S[89,l?R+b({VKT!({(WfrZCWbIl,NYQAfn}4bzefx%/W~S~<4(dG[2v2xGR!Er_#o(K9?
+c_cUcWT!({UH5K~F)j4I-;3R7>G^11BAM7H)g=7>LrLt11BA#1Sj3>SQkT4Hz<SW6s,)SZHa[P[Rn(CKwog&wqb[o[[[NUg.YiL#,dHN!K!F4I-;HNOs|#lIK:w{a.CV!TT9U)iEwcgM[Q!_)8oh*L.!#,dW)*r;
+Il1(fbnF^YTjCGx4lqX)ls@@mgmbCT1m?zX1x:X3-qXkdy_@l;o-hrM4maX-@:bCIPmfbGe0Z_^K_@f=gw_G#5e9s>Il?wm&S~T#9hr<>}(L1-%G1/&(^JcV=DT#ikIlBBWuVKT!({VW-}#69YVz:yIl,NYQ(L&q
+&V)Kl/))Il,NYQ(L#ZuU%E&d%Wu}s5tP&N#N&A$.-X!E523++{)KYE_}Il,NYQ(L1-%G1/rc&$%Jtn&91%&IuZrF%Y&$%?s,&5rD&W(!(!$B#N&A%[#}cW0~&h&z%E&d(>(8&z(1%Qr_rb%Y(8%o1%-S%@#S&T$%
+rG&HtO%w$$%ps,#r$B#W&6,W/F/Q!Cr_rbv;&^%[re%Gtq-V$%&9#M(O&6$)s,/BrI/F-R!Cr_rb&R%ys4%?$B#S&T$%%CrZ%U(8%Pto&C$)s,#k&@%Gs5!Cr_rb&P/F%v%|%o#V0&!Q-XUJKf!u!t!lD<#)6E!o
+*p+w.%|:eT);yS[;_jwk+K;dS~J5,7cQ*5S~9?c_J53X!_#1SM!K!J#$#%#%!R!_!H!M!H!e!E!b!d#F!H!Q!H#-#&!JuK)KBW!_#1SM)*#(!H#=!N-Xc_!L!_#1SM)*!H#=!N!G-Xc_XlYU1a*5H*%!S~>kAfdy
+#+7a/l[R!lG[8}v/#+7a+l@g5uca70#+7a/l-wRb#+7a/l[R#+7a/l#A!_#1SM)*#(!H#=!N-Xc_!L!_#1SM)*!H#=!N!G-Xc_Ot#+7a/l-wzI^Ik14>bP#1?w7aC|+J7a/l-wt4-z_j4>bP#1H*T!.k.y4Z7!,s
+4<SQ7l%$SUSW}<S[|15D!u!t!lD<#)6E!o!v7}8!I)7}^V{R9Vt5-z_j4>bP#1}d-^4Z7!Nh4Az7z9f6RKSW!K!lG[2d-_)*PSbP#1)/zEnj(l=O1a*5!QH(1dW~!E#(B+!N!L!H!Q}v+@!Gcak-k14a=e=X4gNh
+,$cFt4|hYUNh9YXd4>bP#1W9#:yF9!nrX^zDR[4>bP#1H*Do/o!r4bP@4>bP#1H*Do/o!r4bgc5f#8bP#1?w7aBcej!E$S#e#O%C#Z&H%k$/3!rH(O%{#M&[(1&(^JcV6)#8bP#1?w7a;dh-(L#Z&H%k$/3!rH(O
+%{#M&[(1%R01u#(=%ZrOk:Xd4>bP#1?wm&GH8~#+RG-97l%$SUSWGH8~#+S[|15D!u!t!lD<#)6E!o!v7}8!GRc=8!zIn{(_GR/#.e}<7}_QPp/#.ecTSHc=8!zI%$P@+D:s.q2v;ak1Il?wm&iqS++Dl/_^7~k1
+l/_^7~iqS+ut_lfW7~k1fU407}#&iqS+utR<H$gT8!8+gR>WgT#&f_eTVHS+*_7}^V{Rt4-z_j4>bP#1}d#9+^S~TG.>d9^R89*~[R!lG[8}v/PSbP#1#=!R^JcV=D-*cV(K!Q}v7XOt;8*~-w8+r;*4r=)*0~&V
+$B#N&T(P#Mt>1%/S%C%[$%%C%[&s$A()rN,Z8Ev#Vw:r8s8~cA:u-|o1XQ=Pv#*W*N8{!p!y!u!t%.4I.o!K*~Xkk9|17#2>-N/#.eGH8~#+(3zI(K4a/%^J8+r;*4r=)*$A&q&s%=%CrD%I#N&T(P#Mt>1%&5(6
+%Uu^&kre$$tO$.7=qYDA#8bP#1?wm&GH8~#+Otd8_4k1r;*4r=)*tL&^(P%o#Ms1%Z%x&(^JcV=DT#{RXd4>bP#1H*M&S~T#CF~awk+K;dS~T#Rh<4Z_k1r;*4r=)*$A#^(D%G()(6%[s)(Ds5&T$%%CrD%I#N&T
+(P#Mt>1%&50(8Ev#d@-^:sY+G[#A.!9!)*PSbP#1#=!R^JcV=D-*cV(K!Q}v7X~4*L*N8{!p!y!u!t914I.o4h+@bP#1H*T!.k.y4Z;-LT+@bP#1H*R<9!3e)sR[4>bP#1IFJx0-oM2p4>bP#1IFJx0-#2II4rr;
+*4r=GH-^2>ej(L/B&h#O0%%[rN$/&(^JcV=DT#9?)*uS/7#O0%%[rN$/%R&=%y&|#Y%k&8($#N&^&Kuc%C%[%G()&h%P%N#M&Rt@!L&(^JcV=DT#IrXd4>bP#1?w7a+lqd704>bP#1?w7aBcRb4>bP#1}d#9+^4h
++@bP#1?w7a;dfa,/r:r<>}(L#Z&H%k$/3!rH(O%{#M&[(1&(^JcV6)#8bP#1?w7a;dq5Vz:y4>bP#1,NYQ(L#jtp3&%CrD%I#N&T(P#Mt>1%/S*n(_#-#0#1C|!CZ94>bP#1,NYQ(L#j&^%w,YuU$%%CrD%I#N&T
+(P#Mt>1%&50()1hg4>bP#1,NYQ(L/B&h#O0%s6&n&9to(:/F$B#S&T$%%C%[-S%P%N%W&M0&-Xs>4>bP#1H*M&6s#0#1;dgcOK#0#1;dgce1ikVz:y4>bP#1,NYQ(L#i&A(6rD%I#N&T(P#Mt>1%&50(Kf#0#1Uz
+TmbWr&^!W*>qe-MrUoM}UmKYUiM}Uqhxa(mbX3mQ#8bP#1,N+GnLNd-^U{V0U}AZV:=C=qV%E(NqT^TJV-:CV/V1m-Uc#0#1UzHQ_j4>bP#1IFJx0-#29TSQz94RHWSW4h#0#1Uz*.wH+1+BS[d57P75[|7Yd;#-
+B0z,/aB4{R89T!({/@4>bP#1}d-^4ZOt!FT!({-BFH}%[;fsWb!i#0#1Uzb-fw3}XgAX(L/5(RrF%^uZ&9&z&h#O0%%IuO-U$B#O%CrD%I#N&T(P#Mt>1%&5uQA!?KgcZp#,|h859YSQkT=D-*HWSWS~<YS[frZC
+Wb!i#0#1UzT8XJTZV)NtRWR[4>bP#1H*R<9!,+TF2x}%(_?mB/vSwFv,wHwJ~zX$l~ca70/wkp6X?u^cLs8)=b-_KZmbCT6/{R5SXgAX4h+@bP#1?w7aC|TF2xGR!E$S#e#O(K9?c_cUcWT!({b2~F)j0;l;o-hr
+M4maX-@:bCIPmfbGe0Z_^Ke4|Tk@#5e9s>4>bP#1H*R<9!3e)sDA#8bP#1IFJx0-#2I4hct5?@N1+A4>bP#1,NYQ323#0%%[%[-S#Y%CrD%I#N&T(P#Mt>1%/S)Khg4>bP#1,NYQuL&^(P%o#M&[&m%s-Xs>+D4>
+bP#1H*R<9!xV6)#8bP#1}d#9+^4h+@bP#1H*R<9!XI+oOHr;*4r=)*$A.s-V3$(8%W(6rD%I#N&T(P#Mt>1%&d#X%R&9&z&c/8%Fv3d?M<hg4>bP#1,NYQ(L/5(8&krH&l-T-S&n&9to(:/F$B#S&T%E(6%[-S%P
+%N%W&M&@%y%E0(p#QdOt4>bP#1H*R<9!xV6)#8bP#1H*M&4h+@bP#1H*R<9!XI+oOHr;*4r=)*$A.s-V3$(8%W(6rD%I#N&T(P#Mt>1%&d#X%R&9&z&c/8%Fv3d?M<hg4>bP#1,NYQ(L#p$As4&6&m%s-Xs>|16)
+#8bP#1H*R<9!xV>z*4r=)*$A.s-V3$(8%W(6rD%I#N&T(P#Mt>1%&d#X%R&9&z&c/8%F7=qY@KG[AQ)!)wPSbP#1#=!R^JcV6)#8bP#1H*R<9!+McV(K!Q}v7XOt4>bP#1?w7aC|DC#8bP#1H*R<9!xVDA#8bP#1
+?w7aC|n{#6@KG[AQ)!)w#+7a+l@g5uvn+qr;*4r=)*$A#p$As4&6rN$/&(^JcV6)#8bP#1H*R<9!e[4>bP#1H*R<9!3en|4>bP#1IFJx0-#29T4>bP#1W9#:yF9!nrX^zDikVz:y4>bP#1,NYQ(L#Z&H%k$/3!rH
+(O%{#M&[/9LT+@bP#1H*Do/o!r4b7%#8.*_}4>bP#1,NYQc_b-)1hg4>bP#1,NYQ!E$S#e#O%C#Z&H%k$/3!rH(O%{#M&[(1%R.t#~0%%[(.uVs>|16)#8bP#1H*R<9!xV>z*4r=)*$A.s-V3$(8%W(6rD%I#N&T
+(P#Mt>1%&d#X%R&9&z&c/8%F7=qYDA#8bP#1?w7aC|6)#8bP#1H*R<9!+q!lG[#A.!9!)*#+7a+l@g5u-X4>bP#1H*R<9!e[4>bP#1IFJx0-#29T4>bP#1W9#:yF9!nrX^zD9hr<>}(L2|#M$A()uZrG&^(P%o#M
+s1rl1#%P#Y16%W(6rH&P/F/8%F&(^JcV6)#8bP#1H*R<9!e[:phg4>bP#1,NYQ(L%jto(;%?%A&7&e&^tqu[3!rH(O%{#M&[%m1;VxM,DA#8bP#1?w7aC|n{#6@KG[AQ)!)w#+7a+l@g5u)K4>bP#1IFJx0-#29T
+4>bP#1W9#:yF9!nrX^zD9hr<>}(L#Z&H%k$/3!rH(O%{#M&[(1%R01u#(=%ZrOB7)1YE_}4>bP#1,NYQ-P&A%I#N&T(P#Mt>1%&5(6rZre-S#L%R&=&;&@$%6)9m#,!RPSbP#1(t%k&I%a%Grk$/&9#W%z&zrL&J
+&:cW$A#b-T(5&9#N&^&Kuc%C%[%G()&h%P%N#M&Rt@s,&V(!$B#O0%%I#Y%r%P#Y%R&=%y&|#Y%k(6()$/&=(8&krH$B#O&As4!Q-XUJLT+@bP#1IFJx0-#29T4>bP#1W9#:yF9!nrX^zD873upF7$}<6U*4r=&f
+$A1-%G&|#U&f0~&V$B#N&Trk$)c<N1+A)8QLfu(L#p&P0%&IrZta$%)KYE_})8QLfu!Ekl&/&1&3&T(5&9to&;&=$/&?rD&W%F!Cr_rb/7to&j%|&n%urH&_%|&nrc&$%?!Q#%#8&F(D&M&L%b&9to&;&=$/&?rD
+&W%F!Cr_rb&[rIrX&c&e%L#[%C%[rU%Y(8%Pto$%(#&Ru^u[2}23rg(D&M&L%b&9to&;!Cr_rb/7torJ&b&7&e(!t?tprF$Arh&Trk-S&n+g-X!ZCE~w+k#9+^9TSQz94RHWSW4h4JSZHa9M:Lk+#-B0-^QXLdVq
+f+G[-{-}.!*3z3.).+z3.?P^G[.Mc5G[l1z30P/x.=.=.=.=GA:u-|!K0P9p-_+%VH:u-|o1XQ*_+L!_/!7u+B=b!y+LB0z,/aB4k9:u-|za;X{ZHQl}7u9T:u-|}<04).IF9qJhdxqt=Y.{zDYS-_+%#/*2&-9T
+}iv(%/wI#0zyh:.!U:z6SQvvSUSW!K}t7:SZHaEzz,/a#C~Kw8f+!n(^7Awk,O+B=b0.0K;JkI-KB.0.-u,EkI-KOt9[;=*>B0z,/aB4pV70;$+ek1;$+e+SJP+jo6+^z1(_t4R[;$+ek1;$+e+SJP+jo6+^8Uo6
++^f+Vz:y)8QLfu(L/BrJ&5$0%M)Khg)8QLfu32(O%{#M&[&m%s&9&zrJ&5$0%M-Xs>kqip..k%!Qt+t-+k#9+^I4M<~wPS#0)!*47Uv,y~*^pe}WxZx^xapmz!,)t:|x~<0qtf}A~@u&mI~DK8mLDTtSDY|{(f>C
+Af-f|x!K|{txt{[^|x5&JKhFu-[^|x~<u+u+B{yS(_*sz$[{bB^AK*<!mdHChwl_mK!C!gS>k6OHC=dI*^.|3_z7MXo(P.E{yTD3MXPp3hGR3h-Nq1!~z7#)C75)Hac@R(c9H)<_A6M>Pp3hGRIEIG#7F{tf!P,n
+h-IEIG#7F{5K0qL$>$7!,wI/H3IG#76<JK}A3?6[Woc!H)IG#7mJ5N@AIEIG#7!K2FTjfrWgU;wog&wqb[o[AcE&g3d/sR4Z6[YL<8m,7E0E7G7I,R,uU)iE4I-;#$IEIG#7!K!F4I-;!LVNGoBtIEIG#7DKC*>r
+l_!Ym|,$*sZA.k#$T(T*,cVW+x<v.%FW(d,~,$;sq12^T+.E#@IDc#H5PZH9+)7m;sIe*(cn*)H9+)-f#@3tIEIG#7F{.D.E.D>r[Q(pc!H)IG#7+nCoCV2d#0/&;y!YIoIEIG#7+nGs>R6Ct48v3h(dqaGjw94J
+e^=O)G*YGn+p6b9!Yr#.e9_KGI7!7JqaGjpE-lnhSQz9.JHWSW7sSZHaRc#@;sH>#@Hg>,-dH{OfH>#@D3H>#@-!};}Ic9H)cEGHIgHLDa>D)1H>#@;sH>#@}:(#}Ic9H)cEGHIgFE<L)1H>D3H>-!Hh7s!Q#@-!
+HhIe*(!K13CoA>}-H*/el5HKAfH{OfH>;sH>Hg9M!Q#@}:EzOfH>IL|*n:C%H>_tH>l5RcILGoBtH>ILGo>y}-!Q#@-9HlOfH>IL^AK*q*BD!K13Q37s}d&1);Q3E.Dk%4E.AdIr+D13I:A>RbQXB0-^QXLd)~;X
+B0z,/aB4oyAM=V=f4g4i3{4JZ6~G=+,.#86gMA)z8A)7P>yKSZT-3Bz$[{U;B|{wd0ltbkiElsT7>l^AK*@n!gS>Rf-,l_3<C=PcXno-hrM4maX-@:bCr,O5>Zmh-X1w.6eT);U.3BZAiY3ByPBziTa(mbCT,dAo
+^:U:(o3CR3#1:BVP~S4<pd#:3hyVxZx^xapmSQEw@~@eE{(lE}c!H)IG#75&mKJ!~F)j~ZwmCKwog&wqb[o[AcE&g3d/sRF6#DF8bkiEls@@>5n=a(mbCT!^2F7C05277G7I,R.El_3<U.3BZAW}8lx-)152:BVP
+S53R.%h:6{2!IEIG#7+nCoCV#=D3M2IaHVHKsO:VI^@eHhPkHIS(H-A>3>SPP{C70NHa[PE~I/H3IG#7F,btW[TmbW+xw{^+F7.>F9bHJ%U*ls@@dk7C05277G7I,R,u^AK*SAHh!K!ZHNE}H9A+5;l_3<U.3BZA
+W}AXx-)152!l(o3CVQVW+x<v.%FWI/H3IG#7+nCope!Sob;sIEIG#7+nCope!SN3.>2D1HIoE}HK!^IoIEIG#7+n{|.9[RIEIG#7+nCoCVq+.PSjHhIEIG#7+n{|nC3>Vw#=q^4Wxr)6*YGn+p6b9!Yr#.e9_KGI
+aNpfBFzyxapm89GgQDqby8RGHSRIHWSWS_U:(o3CSZHaRc;sH>Hg9MHjH{Of8&I8I:q12^T+w_d;H>;sL$=bH>IDH3IG#7+nCoq11r7iH>IL|*n:C%H>-!HhIe*(H6EYIoH>^3HKH>q+{,l59YSQz97$HWSWS_#1
+:BVPS[~i}+Txe(?FcLq$HK7A#=-!HhIe*(H6hJIo7AIqHKtfq12^Co7A:RIodLH5IgWzHh7AIqHKC+!-~iIWhyM[EZIoIe*(H6HMHh7AIqHK}QoyAM=V=f4g4i-qq^4Ww9XYWgUdjMBal>wpg)b[o[AcE&e%O1pw
+Bw>c~ubf^!pwsR4Z?JK7!TL0g;iE|x!KlUNT?ejsX-@:nA:(@l(d!Xm|0l3BZAW}M7!T[Jz!/@CGx4lqX)ls@@mgX1x:I+!Y<S5Sw9=CCGEDm7D@nP+%DEm<EP5DDJmAnQmC<LmEEW~@u&mI6060!XmN5DmPiFF>
+mC<L<$u>3{SZ3?#-#=j?WgCh;}Cjj?CTja485SA5#-#=jUhKj?X3sc_)jdhUr9S^M7A=<2jMC4ZPA;jP[P2O=O)G*YGn+p6b9!Yr#.e9k+#-#1Gn=LGpqaGjH9>-HIC*3h:p4a=e=X4g4iFkcKXnU{m^Y[maX-@:
+cwe&pwsRO5CDbf^!W*>q@}1BJMlXmi+U$}9ngAZ.i%TMZy!hmqi*YlmwX*bmE?5SmZaRm^Y[maX-@:cwe&pwsRO55pn8^!W*>qAdG/ms/3#^(D%G()(6(;%?%A,$%A%k%a#~%p%R&J%k0(gAZ.i%TMZyi*S$i,iE
+SLKSE?5SZG0>hpo-,~9g|*n:L-2Fa^bf^!W*Yj!Wa_2EW/lPU*|x5&Da5[q(Z|lXc_=(Z=Zi~kmh0~(<%A-XZbZi~kZp^7mwX*n@i$gDWEL@msJb5;[,US[/#8[1[3eT-y485SbNS_,~[v^:/@CGx4lqX)ls@@mg
+mbCT5;x9lx,cbL,~)10ATK[2)^#.e9k+iY41>iAGmbCTSjid:p0ATK[23H/{e9k+iY41>iAGmbCTjaid:p^:^<hpo-hrMFg.r2L-5L1Bbf^!W*Yj!Wa_2EW/lPblatms/3#^&J%k0(gAZ.i%TMZygFY3apx<i_Zs
+iFF>~+K:485SbNS_LkNB)1_@X7z)Lao0k+iYLkXTX@U)iE|x5&1CK8W.B-XZ51LWxi,5XMo0k+iYLkXTX@U)iEbKid:p?lDo[3[{a$W&Y[maX-@:cwe&pwsRO55Nu=g3aZmST75^K2mse1gAZ.i%TMa<TPZ!?!Jb
+aA@cblatE?5SZG/o;sdD~G^M%!c74ZOt#,/o$|waYU7i#,/o;sw089#>h~S_,~gc9?c_!L!_#1SM)*!H#=!N-Xc_Ot#>cO(d%e2^Rb7(X^QDmh&F/7%P%N#M&P&9s(%v(9$B#RtO$.(i:u-|6s+@#0)!*47Uv,k%
+!Qt+A=A5#-#=jUssj?I+P.s[r7jfjz9<aGjEt$=Nk$S^M7sO@vjMC4ZPaWi@4bo7ZkA=iTa(mbX3k%!Qt+M^)1+)*(B0-^QXLd)1#=q^4WB0-^QXLd)14bo7LaB1CIB4!-+@!yP>yKzDt.nb7(X^QDmh$A#j%X&I
+(8%WuP%C(;%?%AcW$A.s%q#O&A$$cV!Q(i7(X^QDmwiFF>~;~D|{}Az7=O<!ja:JABM7I&b&cxW*EW,$S~HISjQyN^GR,d9?3vDaT}<$k%!Qt+I&IrABM7i;Rzg.bcBxwuB$t0B*dm~N:s9M:Lk+;B!_!qCX)*$A
+#j%X&I(8%WuP%C(;%?%Av3M<|17#2>8+:u-|o1XQ(x*-&/)d7z_:Vq{R7i_@f=gw_G#5e9SMc7?#0ATK[23H/{e9_K{_(3+D{_k1SMc74Zgss9vo[;_j,.#8!}%/4I({GH+@VH^:b@[TbW+xmdHChwU)iElsT7>l
+^AK*M2nC!gS>Rf-,l_3<C=dI*^#=w:[{Ch;}Cjj?CTCqbL#67!7WIvYWm[W&bXwpg)b[o[AcE&e%O1pwBw>clDFtbCr,4Z5me.5Q^AK*h}0/&F&A#~(Q&=%are%y,W(D-S&n%RmlY{gD(za=TQY3LBhFms^/atJi
+wwl_!Xm|0l#6ZG&+l;U{m^bXwpg)b[o[AcE&e%O1pwBw>c~uG7bCr,4Z5mO65Q^AK*h}0/JP$}9ngAZ.i%TMZy!hmqi*5qZ|i_ZsX*n@AHmb?~l_!Xm|0l#6@+2eTmbWn*g&wqb[o[AcE&e%O1pwBw>clDn8^!pw
+sRO5OQE5g;iEX+7C05277G7I,R.El_!Xm|0l#6bNAC2eU4AB#=wcA<0kWjj?X3sc_)jdhUr9S^7Wc5ByAG@GmbFHiJt0B*hJhH4MFEiCA~mbFHiJAy2e>:jWsQSgL-hF5^<$k%!Qt+C^EtS37u>:2FAG@GmbX3hH
+4MA<2FAG@GmbX3A52dsbA<2Fr&^!pwsRO5OQi@4b[eM4maX-juk%!Qt+I_)14bB0z,/aB4ni4XI44r-r4YS|>ddx,.#86gMA)zo1xl,.#8!}%/4I({o1xl{jpT,/ptk4j(eTS,okw{lM>[S^sqByr&^!pwsR4Zsv
+Y+sxr5_)jdhUr9r{ipdxiK%/iMEYp#Qd(3:u-|4h+@bP#1?w7a+l_Rs9M<
+]==]
+local M={}
+for i=1,#A do M[A:byte(i)]=i-1 end
+local N=#A
+D=(D:gsub("%s",""))
+local dict={}
+for i=0,255 do dict[i]=string.char(i) end
+local nxt=256
+local lim=N*N
+local out={}
+local prev
+for i=1,#D,2 do
+local c=M[D:byte(i)]*N+M[D:byte(i+1)]
+local e=dict[c]
+if not e then e=prev..prev:sub(1,1) end
+out[#out+1]=e
+if prev and nxt<lim then dict[nxt]=prev..e:sub(1,1) nxt=nxt+1 end
+prev=e
+end
+local f,err=loadstring(table.concat(out))
+if not f then warn("CozyHub: "..tostring(err)) return end
+return f()
