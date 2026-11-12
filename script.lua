@@ -1,5 +1,5 @@
 --[[
-Cozy Hub v9.9  |  Delta / Xeno
+Cozy Hub v10  |  Delta / Xeno
 Ключ меняется в переменной KEY.
 Открыть/закрыть меню: RightShift или тап по иконке.
 Двойной тап по иконке: закрепить / открепить.
@@ -37,7 +37,7 @@ hitbox = false, hitboxSize = 4, hitboxTrans = 70, hitboxTeam = true, hitboxHl = 
 bodyHitbox = false, bodySize = 7, bodyTrans = 75, bodyHl = true,
 tgt = false, tgtStyle = "Кольцо", tgtColor = "Тема", tgtSel = "К прицелу", tgtRange = 300, tgtFov = 250,
 stretch = false, stretchVal = 75, stretchX = 100, stretchMode = "4:3",
-bodyGlow = false, glowSelf = false, glowColor = "Как есть", npcGlow = false, glowNpcColor = "Как есть", glowRange = 500,
+bodyGlow = false, glowSelf = false, glowColor = "Как есть", npcGlow = false, glowNpcColor = "Как есть", glowRange = 500, glowWall = true,
 tgtTeam = true, tgtHud = true, tgtSize = 100, tgtSpeed = 100,
 xh = false, xhStyle = "Крест", xhColor = "Белый", xhSize = 10, xhThick = 2, xhGap = 4, xhAlpha = 100,
 xhSpin = 0, xhOffX = 0, xhOffY = 0, xhOutline = true, xhDot = false, xhDyn = false, xhHit = false,
@@ -2302,7 +2302,7 @@ Theme.dir, Theme.tw = th.dir or -1, th.tw or 1
 FabGrad.Color = ColorSequence.new({ CSK(0, th.accent), CSK(.5, th.off), CSK(1, th.accent) })
 for nm, lbl in pairs(Theme.cards) do lbl.Text = (nm == name and "• " or "") .. nm end
 end
-local Glow = { orig = setmetatable({}, { __mode = "k" }), npcs = {}, t = 0, stamp = 0, npcConn = nil, scanning = false }
+local Glow = { orig = setmetatable({}, { __mode = "k" }), hls = {}, npcs = {}, t = 0, stamp = 0, npcConn = nil, scanning = false }
 do
 local NEON = Enum.Material.Neon
 local function colorFor(name)
@@ -2329,7 +2329,14 @@ Glow.orig[part] = nil
 end
 end
 end
-function Glow.restoreAll() release("p"); release("n") end
+local function dropHl(m)
+local e = Glow.hls[m]
+if e then pcall(function() e.h:Destroy() end) Glow.hls[m] = nil end
+end
+function Glow.restoreAll()
+release("p"); release("n")
+for m in pairs(Glow.hls) do dropHl(m) end
+end
 local function rootOf(m) return m:FindFirstChild("HumanoidRootPart") or m.PrimaryPart end
 local function addNpc(h)
 local m = h.Parent
@@ -2367,11 +2374,19 @@ if not myRoot then return true end
 local r = rootOf(m)
 return r and (r.Position - myRoot.Position).Magnitude <= range
 end
+local cands = {}
+local function dist(m)
+local r = rootOf(m)
+return (r and myRoot) and (r.Position - myRoot.Position).Magnitude or 0
+end
 if S.bodyGlow then
 local col = colorFor(S.glowColor)
 for _, plr in ipairs(Players:GetPlayers()) do
 local ch = plr.Character
-if ch and (plr ~= LP or S.glowSelf) and near(ch) then paint(ch, "p", col, stamp) end
+if ch and (plr ~= LP or S.glowSelf) and near(ch) then
+paint(ch, "p", col, stamp)
+cands[#cands + 1] = { ch, col, dist(ch) }
+end
 end
 end
 release("p", stamp)
@@ -2379,10 +2394,32 @@ if S.npcGlow then
 local col = colorFor(S.glowNpcColor)
 for m in pairs(Glow.npcs) do
 if not m.Parent then Glow.npcs[m] = nil
-elseif m ~= myChar and near(m) then paint(m, "n", col, stamp) end
+elseif m ~= myChar and near(m) then
+paint(m, "n", col, stamp)
+cands[#cands + 1] = { m, col, dist(m) }
+end
 end
 end
 release("n", stamp)
+if S.glowWall and #cands > 0 then
+table.sort(cands, function(a, b) return a[3] < b[3] end)
+for i = 1, math.min(#cands, 20) do
+local m, col = cands[i][1], cands[i][2] or Color3.new(1, 1, 1)
+local e = Glow.hls[m]
+if not e or not e.h.Parent then
+e = { h = new("Highlight", {
+Name = "CozyGlowHL", DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+FillTransparency = .45, OutlineTransparency = 0, Adornee = m,
+}, m) }
+Glow.hls[m] = e
+end
+e.stamp = stamp
+if e.h.FillColor ~= col then e.h.FillColor = col; e.h.OutlineColor = col end
+end
+end
+for m, e in pairs(Glow.hls) do
+if e.stamp ~= stamp or not m.Parent then dropHl(m) end
+end
 end
 end
 conn(RunService.RenderStepped, function(dt)
@@ -2471,10 +2508,11 @@ Section(VisualsPage, "Свечение тел")
 Toggle(VisualsPage, "Свечение всех игроков", "bodyGlow", function(v) Notify(v and "Свечение игроков включено" or "Свечение игроков выключено") end)
 Selector(VisualsPage, "Цвет игроков", "glowColor", { "Как есть", "Радуга", "Красный", "Зелёный", "Синий", "Фиолетовый", "Белый", "Жёлтый" })
 Toggle(VisualsPage, "Светиться и мне", "glowSelf")
+Toggle(VisualsPage, "Сквозь стены", "glowWall")
 Toggle(VisualsPage, "Свечение NPC", "npcGlow", function(v) Glow.npcOn(v) end)
 Selector(VisualsPage, "Цвет NPC", "glowNpcColor", { "Как есть", "Радуга", "Красный", "Зелёный", "Синий", "Фиолетовый", "Белый", "Жёлтый" })
 Slider(VisualsPage, "Дальность свечения", "glowRange", 100, 1500, 50, " m")
-InfoCard(VisualsPage, "Тела превращаются в неон. Свечение считается раз в полсекунды и только в пределах дальности, поэтому без лагов. «Как есть» оставляет родной цвет.", 62)
+InfoCard(VisualsPage, "Тела превращаются в неон. Свечение считается раз в полсекунды и только в пределах дальности, поэтому без лагов. «Сквозь стены» подсвечивает 20 ближайших целей (лимит Roblox). «Как есть» оставляет родной цвет тела; сквозь стены он белый.", 62)
 Section(VisualsPage, "Мир и камера")
 Toggle(VisualsPage, "Фулбрайт", "fullbright", function() restoreLight() end)
 Toggle(VisualsPage, "Без тумана", "nofog", function() restoreLight() end)
